@@ -1,0 +1,30 @@
+- Efficient Hessian-vector multiplication
+- Efficient GN-vector multiplication
+- Definition of GN vector multiplication for classification loss
+x- Implementation of CG
+x- CG initialization, CG termination criterion
+- Choice of damping parameter
+- Preconditioner for CG
+- Empirical look at curvature/condition number
+- Choice of search direction, backtracking once CG terminates
+- Macro-batch
+
+
+Overall algorithm:
+
+- For i=1 to MAX do:
+  - Compute gradient on whole training set
+  - Choose B, the implicit matrix to multiply with (Hessian or GN)
+  - Choose LAMBDA damping parameter
+  - Choose initialization direction for CG (gradient, or DIR_{i-1})?
+  - Choose CG termination criterion 
+    - #iters
+    - reduction in CG objective over K CG iters
+    - direction of negative curvature found (if Hessian)
+  - Perform CG using B and gradient and initial search direction, until termination
+  - Choose search direction:
+    - output of CG
+    - CG and dir neg curv, alpha, alpha^2 or vice versa
+    - gradient, CG, DNC (alpha, alpha^2, alpha^3)?
+  - Perform line search
+    - 
