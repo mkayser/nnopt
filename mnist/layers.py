@@ -37,7 +37,7 @@ class AbstractLayer(object):
 
 class AffineLayer(AbstractLayer):
     def __init__(self,w,b):
-        self.w = w
+        self.w_ = w
         self.b = b
         self.dw = None
         self.db = None
@@ -49,13 +49,18 @@ class AffineLayer(AbstractLayer):
         # b is dimout x 1
         # xout is dimout x n
         (dimin, n) = xin.shape
-        (dimout, dimin2) = self.w.shape
-        (dimout2) = self.b.shape
+        (dimout, dimin2) = self.w_.shape
+        (dimout2, _) = self.b.shape
+
+        #print "Affine layer"
+        #print "xin shape = ", xin.shape
+        #print "w shape = ", self.w_.shape
+        #print "b shape = ", self.b.shape
         
-        assert dimin == dimin2
+        assert dimin == dimin2, "input dims {} does not agree with {}".format(dimin, dimin2)
         assert dimout == dimout2
         
-        xout = self.w.dot(xin) + self.b
+        xout = self.w_.dot(xin) + self.b
         self.cached_xin = xin
     
         return xout
@@ -71,9 +76,10 @@ class AffineLayer(AbstractLayer):
 
         xin = self.cached_xin
 
+        #print "Affine BWD: dout is ", dout.shape, " ", 
         self.db = np.sum(dout, axis=1, keepdims=True)
-        self.dw = dout.dot(xin) 
-        din = self.w.T.dot(dout)
+        self.dw = dout.dot(xin.T) 
+        din = self.w_.T.dot(dout)
 
         return din
 
@@ -83,29 +89,29 @@ class AffineLayer(AbstractLayer):
        
     # return weights
     def w(self):
-        return [self.w, self.b]
+        return [self.w_, self.b]
 
     # return weights
     def wset(self, wval):
         assert len(wval)==2
-        assert np.shape(wval[0]) == np.shape(self.w)
+        assert np.shape(wval[0]) == np.shape(self.w_)
         assert np.shape(wval[1]) == np.shape(self.b)
-        self.w = wval[0]
+        self.w_ = wval[0]
         self.b = wval[1]
 
     # increment weights
     def wadd(self, wval, mult):
         assert len(wval)==2
-        assert np.shape(wval[0]) == np.shape(self.w)
+        assert np.shape(wval[0]) == np.shape(self.w_)
         assert np.shape(wval[1]) == np.shape(self.b)
-        self.w += wval[0] * mult
+        self.w_ += wval[0] * mult
         self.b += wval[1] * mult
 
     def l2reg_loss(self):
-        return np.sum(self.w**2)
+        return np.sum(self.w_**2)
 
     def l2reg_loss_grad(self):
-        return [2 * self.w, np.zeros_like(self.b)]
+        return [2 * self.w_, np.zeros_like(self.b)]
 
 
 class ReluLayer(AbstractLayer):
@@ -137,14 +143,14 @@ class ReluLayer(AbstractLayer):
         assert len(w)==0
 
     # return weights
-    def wadd(self, wval, mult):
-        assert len(w)==0
+    def wadd(self, wincr, mult):
+        assert len(wincr)==0
 
     def l2reg_loss(self):
-        pass
+        return 0
 
     def l2reg_loss_grad(self):
-        pass
+        []
 
 
 class TanhLayer(AbstractLayer):
@@ -177,13 +183,55 @@ class TanhLayer(AbstractLayer):
 
     # return weights
     def wadd(self, wincr, mult):
-        assert len(w)==0
+        assert len(wincr)==0
 
     def l2reg_loss(self):
-        pass
+        return 0
 
     def l2reg_loss_grad(self):
-        pass
+        return []
+
+
+class SigmoidLayer(AbstractLayer):
+    def __init__(self):
+        self.cached_sigmoid_xin = None
+
+    # return xout
+    def fwd(self, xin):
+        xout = 1.0/(1.0 + np.exp(-xin))
+        self.cached_sigmoid_xin = xout
+        assert np.all(xout <= 1)
+        assert np.all(xout >= 0)
+        return xout
+
+    # return din
+    def bwd(self, dout):
+        sigmoid_xin = self.cached_sigmoid_xin
+        din = sigmoid_xin * (1.0 - sigmoid_xin)
+        return din
+
+    # return gradients
+    def grad(self):
+        return []
+       
+    # return weights
+    def w(self):
+        return []
+
+    # return weights
+    def wset(self, w):
+        assert len(w)==0
+
+    # return weights
+    def wadd(self, wincr, mult):
+        assert len(wincr)==0
+
+    def l2reg_loss(self):
+        return 0
+
+    def l2reg_loss_grad(self):
+        return []
+
 
 
 
