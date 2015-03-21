@@ -6,7 +6,7 @@ import re
 class AbstractAffineInitializer(object):
     def __init__(self):
         pass
-    def initialize(din, dout):
+    def initialize(w,b):
         pass
 
 class GaussianAffineInitializer(AbstractAffineInitializer):
@@ -14,32 +14,47 @@ class GaussianAffineInitializer(AbstractAffineInitializer):
         self.wstd = wstd;
         self.bstd = bstd;
 
-    def initialize(self, din, dout):
-        w = self.wstd * np.random.randn(dout,din)
-        b = self.bstd * np.random.randn(dout,1)
-        return (w,b)
+    def initialize(self, w, b):
+        w[...] = self.wstd * np.random.randn(w.size)
+        b[...] = self.bstd * np.random.randn(b.size)
 
 class MLPAutoencoder(object):
     def __init__(self, specifier, l2reg, affinit):
         tokens = specifier.split('_')
         self.layers = []
+        self.layerSizes = []
         self.affinit = affinit
+
+        # Step through layer specifications and get parameter
+        # sizes
+        totalSize = 0
         for tok in tokens:
-            self.layers.append(self.makeLayer(tok))
+            size = self.makeLayer(tok, l2reg, getParamSize=True)
+            self.layerSizes.append(size)
+            totalSize += size
+
+        # Allocate underlying arrays
+        # Each NN layer will have views into these arrays
+        # For higher level classes like SGD, parameters can be
+        # treated as a single flat vector, which is convenient
+        self.w_ = np.zeros(totalSize)
+        self.grad_ = np.zeros(totalSize)
+
+        # Make the actual layers
+        start=0
+        for tok,size in zip(tokens,self.layerSizes):
+            wslice = self.w_[start:start+size]
+            gslice = self.grad_[start:start+size]
+            layer = self.makeLayer(tok, l2reg, wslice, gslice)
+            self.layers.append(layer)
         self.l2reg = l2reg
         self.dout = None
         
     def data_loss(self, ypred, y):
-        #print "ypred={}, y={}".format(ypred.shape, y.shape)
-        #print "ypred={}, y={}".format(ypred.max(), y.max())
-        #print "ypred={}, y={}".format(ypred.min(), y.min())
 
         diff = ypred-y
         loss = np.sum(.5 * (diff**2)) / diff.shape[1]
         din = diff
-        
-        #print "loss = {}".format(loss)
-
         return (loss, din)
 
     def fwd(self, X, y):
@@ -67,31 +82,20 @@ class MLPAutoencoder(object):
             curr = l.bwd(curr)
         
     def grad(self):
-        val = []
-        for l in self.layers:
-            grad = l.grad()
-            l2grad = l.l2reg_loss_grad()
-            
-            assert len(grad) == len(l2grad)
-            fullgrad = [i+(self.l2reg*j) for i,j in zip(grad,l2grad)]
-            val.append(fullgrad)
-        return val
+        return self.grad_
 
     def w(self):
-        val = []
-        for l in self.layers:
-            val.append(l.w())
-        return val
+        return self.w_
 
-    def wset(self, w):
-        for (l,lw) in zip(self.layers, w):
-            l.wset(lw)
+    # def wset(self, w):
+    #     for (l,lw) in zip(self.layers, w):
+    #         l.wset(lw)
 
-    def wadd(self, wincr, mult):
-        for (l,lwincr) in zip(self.layers, wincr):
-            l.wadd(lwincr, mult)
+    # def wadd(self, wincr, mult):
+    #     for (l,lwincr) in zip(self.layers, wincr):
+    #         l.wadd(lwincr, mult)
 
-    def makeLayer(self, specifier):
+    def makeLayer(self, specifier, l2reg, wslice, gslice, getParamSize=False):
         print "Layer spec: ",specifier
         maff = re.match(r"a\.(\d+)\.(\d+)$", specifier)
         mrelu = re.match(r"r$", specifier)
@@ -101,16 +105,34 @@ class MLPAutoencoder(object):
         if maff:
             din = int(maff.group(1))
             dout = int(maff.group(2))
-            (w,b) = self.affinit.initialize(din,dout)
-            return layers.AffineLayer(w,b)
+            if getParamSize: return din*dout + dout
+
+            assert wslice.size() == (din*dout)+dout
+            assert gslice.size() == (din*dout)+dout
+
+            _wslice = wslice[:(din*dout)]
+            _bslice = wslice[(din*dout):]
+            _gwslice = gslice[:(din*dout)]
+            _gbslice = gslice[(din*dout):]
+            
+            self.affinit.initialize(_wslice,_bslice)
+
+            _wslice  = _wslice.reshape(dout, din)
+            _bslice  = _bslice.reshape(dout, 1)
+            _gwslice = _gwslice.reshape(dout, din)
+            _gbslice = _gbslice.reshape(dout, 1)
+            return layers.AffineLayer(_wslice,_bslice, _gwslice, _gbslice, l2reg)
             
         elif mrelu:
+            if getParamSize: return 0
             return layers.ReluLayer()
 
         elif mtanh:
+            if getParamSize: return 0
             return layers.TanhLayer()
 
         elif msigmoid:
+            if getParamSize: return 0
             return layers.SigmoidLayer()
 
         else:

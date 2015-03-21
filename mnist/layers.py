@@ -36,12 +36,17 @@ class AbstractLayer(object):
     
 
 class AffineLayer(AbstractLayer):
-    def __init__(self,w,b):
+    # Parameters are allocated from an underlying memory block
+    # There are no accessors for parameters or gradients.
+    # Instead, an external class owns parameters and gradients as a single
+    # large flattened array.
+    def __init__(self,w,b,dw,db,reg):
         self.w_ = w
         self.b = b
-        self.dw = None
-        self.db = None
+        self.dw = dw
+        self.db = db
         self.cached_xin = None
+        self.reg = reg
 
     def fwd(self, xin):
         # xin is dimin x n
@@ -77,41 +82,15 @@ class AffineLayer(AbstractLayer):
         xin = self.cached_xin
 
         #print "Affine BWD: dout is ", dout.shape, " ", 
-        self.db = np.sum(dout, axis=1, keepdims=True)
-        self.dw = dout.dot(xin.T) 
+        self.db[...] = np.sum(dout, axis=1, keepdims=True)
+        self.dw[...] = dout.dot(xin.T) + self.reg * 2 * w
         din = self.w_.T.dot(dout)
 
         return din
 
-    # return gradients
-    def grad(self):
-        return [self.dw, self.db]
-       
-    # return weights
-    def w(self):
-        return [self.w_, self.b]
-
-    # return weights
-    def wset(self, wval):
-        assert len(wval)==2
-        assert np.shape(wval[0]) == np.shape(self.w_)
-        assert np.shape(wval[1]) == np.shape(self.b)
-        self.w_ = wval[0]
-        self.b = wval[1]
-
-    # increment weights
-    def wadd(self, wval, mult):
-        assert len(wval)==2
-        assert np.shape(wval[0]) == np.shape(self.w_)
-        assert np.shape(wval[1]) == np.shape(self.b)
-        self.w_ += wval[0] * mult
-        self.b += wval[1] * mult
-
     def l2reg_loss(self):
-        return np.sum(self.w_**2)
+        return self.reg * np.sum(self.w_**2)
 
-    def l2reg_loss_grad(self):
-        return [2 * self.w_, np.zeros_like(self.b)]
 
 
 class ReluLayer(AbstractLayer):
@@ -130,27 +109,8 @@ class ReluLayer(AbstractLayer):
         din = (xin > 0) * dout
         return din
 
-    # return gradients
-    def grad(self):
-        return []
-       
-    # return weights
-    def w(self):
-        return []
-
-    # return weights
-    def wset(self, w):
-        assert len(w)==0
-
-    # return weights
-    def wadd(self, wincr, mult):
-        assert len(wincr)==0
-
     def l2reg_loss(self):
         return 0
-
-    def l2reg_loss_grad(self):
-        []
 
 
 class TanhLayer(AbstractLayer):
@@ -169,27 +129,8 @@ class TanhLayer(AbstractLayer):
         din = 1 - (tanh_xin**2)
         return din
 
-    # return gradients
-    def grad(self):
-        return []
-       
-    # return weights
-    def w(self):
-        return []
-
-    # return weights
-    def wset(self, w):
-        assert len(w)==0
-
-    # return weights
-    def wadd(self, wincr, mult):
-        assert len(wincr)==0
-
     def l2reg_loss(self):
         return 0
-
-    def l2reg_loss_grad(self):
-        return []
 
 
 class SigmoidLayer(AbstractLayer):
@@ -219,27 +160,8 @@ class SigmoidLayer(AbstractLayer):
         din = sigmoid_xin * (1.0 - sigmoid_xin)
         return din
 
-    # return gradients
-    def grad(self):
-        return []
-       
-    # return weights
-    def w(self):
-        return []
-
-    # return weights
-    def wset(self, w):
-        assert len(w)==0
-
-    # return weights
-    def wadd(self, wincr, mult):
-        assert len(wincr)==0
-
     def l2reg_loss(self):
         return 0
-
-    def l2reg_loss_grad(self):
-        return []
 
 
 
