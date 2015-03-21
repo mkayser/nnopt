@@ -69,8 +69,12 @@ class MLPAutoencoder(object):
     def grad(self):
         val = []
         for l in self.layers:
-            grad = l.grad() + (self.l2reg * l.l2reg_loss_grad())
-            val.append(grad)
+            grad = l.grad()
+            l2grad = l.l2reg_loss_grad()
+            
+            assert len(grad) == len(l2grad)
+            fullgrad = [i+(self.l2reg*j) for i,j in zip(grad,l2grad)]
+            val.append(fullgrad)
         return val
 
     def w(self):

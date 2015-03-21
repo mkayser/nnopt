@@ -198,7 +198,16 @@ class SigmoidLayer(AbstractLayer):
 
     # return xout
     def fwd(self, xin):
-        xout = 1.0/(1.0 + np.exp(-xin))
+        # Safe sigmoid: bounds check
+        zeromask = xin<-45
+        onemask  = xin>45
+        calcmask = np.logical_not(np.logical_or(zeromask,onemask))
+        
+        # Readability over efficiency for now
+        xout = np.zeros_like(xin)
+        xout[onemask]  = 1
+        xout[calcmask] = 1.0/(1.0 + np.exp(-xin[calcmask]))
+
         self.cached_sigmoid_xin = xout
         assert np.all(xout <= 1)
         assert np.all(xout >= 0)

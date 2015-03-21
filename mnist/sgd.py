@@ -37,7 +37,11 @@ class SGD(object):
 
             wincr = [[-e * self.lr for e in l] for l in grad]
             norm_wincr = paramutils.norm(wincr)
-            norm_w     = paramutils.norm(mlp.w())
+
+            flatparms  = [item for sublist in mlp.w() for item in sublist]
+            norm_w     = np.sqrt(sum([(m**2).sum() for m in flatparms]))
+            wmin       = min([m.min() for m in flatparms])
+            wmax       = max([m.max() for m in flatparms])
             mlp.wadd(wincr, 1.0)
 
             self.start = end % self.n
@@ -47,7 +51,7 @@ class SGD(object):
                 #print "Reducing lr: {} => {}".format(self.lr, newlr)
                 self.lr = newlr
 
-            print "data_loss={:.2E}  reg_loss={:.2E}  lr={:.2E}  orig_grad={:.2E}  clip_grad={:.2E}  {}  stepsize={:.2E}  wnorm={:.2E}".format(data_loss, reg_loss, self.lr, paramutils.norm(orig_grad), paramutils.norm(grad), ("C" if clipped else "."), norm_wincr, norm_w)
+            print "data_loss={:.2E}  reg_loss={:.2E}  lr={:.2E}  orig_grad={:.2E}  clip_grad={:.2E}  {}  stepsize={:.2E}  wnorm={:.2E}  wmin,max={:.2E},{:.2E}".format(data_loss, reg_loss, self.lr, paramutils.norm(orig_grad), paramutils.norm(grad), ("C" if clipped else "."), norm_wincr, norm_w, wmin, wmax)
 
     def clip_grad(self, grad):
         norm = paramutils.norm(grad)
