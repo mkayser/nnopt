@@ -24,6 +24,9 @@ class AbstractLayer(object):
     def wset(self, w):
         pass
 
+    def w_debug(self):
+        return []
+
     # return weights
     def wadd(self, wincr, mult):
         pass
@@ -80,13 +83,17 @@ class AffineLayer(AbstractLayer):
         # returns: din, dw, db
 
         xin = self.cached_xin
+        n = xin.shape[1]
 
-        #print "Affine BWD: dout is ", dout.shape, " ", 
+        # Update in place!
         self.db[...] = np.sum(dout, axis=1, keepdims=True)
-        self.dw[...] = dout.dot(xin.T) + self.reg * 2 * w
+        self.dw[...] = dout.dot(xin.T) + self.reg * 2 * self.w_
         din = self.w_.T.dot(dout)
 
         return din
+
+    def w_debug(self):
+        return [self.w_, self.b]
 
     def l2reg_loss(self):
         return self.reg * np.sum(self.w_**2)

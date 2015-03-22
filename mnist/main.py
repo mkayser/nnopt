@@ -2,12 +2,16 @@ import numpy as np
 import sgd
 import mlp
 import mnist
+import gradcheck
 from pylab import *
 
 def showimage(m, maxval):
     assert len(m.shape)==2
     
-    m = np.maximum(255.0, ((m / maxval)* 255.0)).astype(int)
+    m = m - m.min()
+    m = m / m.max()
+    m = (m * 255.0).astype(int)
+    #m = np.maximum(255.0, ((m / maxval)* 255.0)).astype(int)
     imshow(m, cmap=cm.gray)
     show()
 
@@ -20,9 +24,9 @@ def do_mnist():
 
     maxd = 784
 
-    n = 100
-    niter = 15
-    lr = .5
+    n = 500
+    niter = 500
+    lr = .000001
     (lrstep, lrmult) = (100, .9)
     l2reg = 0.01
     max_grad_norm = .1 / lr
@@ -43,27 +47,43 @@ def do_mnist():
     affinit = mlp.GaussianAffineInitializer(std,std)
     mlpa = mlp.MLPAutoencoder(archstr, l2reg, affinit)
 
-    sgdobj = sgd.SGD(X, X, n, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
-
-    sgdobj.train(mlpa, niter)
-
-    w = mlpa.w()[0][0]
-    print np.linalg.norm(w), np.max(w), np.min(w), np.shape(w)
+    w = mlpa.w_debug()[0][0]
+    #print np.linalg.norm(w), np.max(w), np.min(w), np.shape(w)
+    #print "Done."
     #showimage(w, 1)
+
+    #sgdobj = sgd.SGD(X, X, n, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
+    #sgdobj.train(mlpa, niter)
+
+    mlpa.fwd(X,X)
+    mlpa.bwd()
+    f = lambda: sum(mlpa.fwd(X,X)[1:])
+    g = lambda: mlpa.grad()
+    gradcheck.gradcheck(f, g, mlpa.w())
+
+
+    w = mlpa.w_debug()[0][0]
+    #print np.linalg.norm(w), np.max(w), np.min(w), np.shape(w)
+    #print "Done."
+    showimage(w, w.max())
 
 def do_test():
     np.random.seed(1003)
+    np.set_printoptions(precision=1)
 
-    N = 10
-    niter = 1000
-    lr = .0001
-    (lrstep, lrmult) = (10, .9)
-    l2reg = .01
+    N = 3
+    niter = 10000
+    lr = 1
+    (lrstep, lrmult) = (1000, .1)
+    l2reg = .0001
     max_grad_norm = 1000000000000 / lr
     std = 0.0001
 
-    X = (np.arange(N)+1).reshape(1,N)
-    X = np.concatenate((X,X**2,X**3))
+    #X = (np.arange(N)+1).reshape(1,N)
+    #X = np.concatenate((X,X**2,X**3))
+    #X = np.concatenate((X**2,X**3))
+    X = np.random.randn(2,N)
+    X = (X - X.mean())/X.std()
     y = X*2
 
     d = X.shape[0]
@@ -76,17 +96,17 @@ def do_test():
     affinit = mlp.GaussianAffineInitializer(std,std)
     mlpa = mlp.MLPAutoencoder(archstr, l2reg, affinit)
 
-    sgdobj = sgd.SGD(X, X, n, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
-
+    #mlpa.fwd(X,y)
+    #mlpa.bwd()
+    #f = lambda: sum(mlpa.fwd(X,y)[1:])
+    #g = lambda: mlpa.grad()
+    #gradcheck.gradcheck(f, g, mlpa.w())
+    sgdobj = sgd.SGD(X, y, n, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
     sgdobj.train(mlpa, niter)
+    
 
-    w = mlpa.w()
-    print type(w), type(w[0]), type(w[0][0]), w[0][0].shape
-    #w = mlpa.w()[0][0]
-    #print np.linalg.norm(w), np.max(w), np.min(w), np.shape(w)
-    print w[0][0][:10,:10]
-    #showimage(w, 1)
+
     
 if __name__ == "__main__":
-    #do_mnist()
-    do_test()
+    do_mnist()
+    #do_test()
