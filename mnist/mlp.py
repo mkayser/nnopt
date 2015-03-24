@@ -29,7 +29,7 @@ class MLPAutoencoder(object):
         # sizes
         totalSize = 0
         for tok in tokens:
-            size = self.makeLayer(tok, l2reg, None, None, getParamSize=True)
+            size = self.makeLayer(tok, l2reg, None, None, None, getParamSize=True)
             self.layerSizes.append(size)
             totalSize += size
 
@@ -39,13 +39,15 @@ class MLPAutoencoder(object):
         # treated as a single flat vector, which is convenient
         self.w_ = np.zeros(totalSize)
         self.grad_ = np.zeros(totalSize)
+        self.r_ = np.zeros(totalSize)
 
         # Make the actual layers
         start=0
         for tok,size in zip(tokens,self.layerSizes):
             wslice = self.w_[start:start+size]
             gslice = self.grad_[start:start+size]
-            layer = self.makeLayer(tok, l2reg, wslice, gslice)
+            rslice = self.r_[start:start+size]
+            layer = self.makeLayer(tok, l2reg, wslice, gslice, rslice)
             self.layers.append(layer)
         self.l2reg = l2reg
         self.dout = None
@@ -101,7 +103,7 @@ class MLPAutoencoder(object):
     #     for (l,lwincr) in zip(self.layers, wincr):
     #         l.wadd(lwincr, mult)
 
-    def makeLayer(self, specifier, l2reg, wslice, gslice, getParamSize=False):
+    def makeLayer(self, specifier, l2reg, wslice, gslice, rslice, getParamSize=False):
         print "Layer spec: ",specifier
         maff = re.match(r"a\.(\d+)\.(\d+)$", specifier)
         mrelu = re.match(r"r$", specifier)
@@ -115,6 +117,7 @@ class MLPAutoencoder(object):
 
             assert wslice.size == (din*dout)+dout
             assert gslice.size == (din*dout)+dout
+            assert rslice.size == (din*dout)+dout
 
             # This is the conversion from a flat array to the
             # matrices that AffineLayer uses for its parameters.
@@ -130,6 +133,8 @@ class MLPAutoencoder(object):
             _bslice = wslice[(din*dout):]
             _gwslice = gslice[:(din*dout)]
             _gbslice = gslice[(din*dout):]
+            _rwslice = rslice[:(din*dout)]
+            _rbslice = rslice[(din*dout):]
             
             self.affinit.initialize(_wslice,_bslice)
 
@@ -137,24 +142,29 @@ class MLPAutoencoder(object):
             _bslice  = _bslice.reshape(dout, 1)
             _gwslice = _gwslice.reshape(dout, din)
             _gbslice = _gbslice.reshape(dout, 1)
-            return layers.AffineLayer(_wslice,_bslice, _gwslice, _gbslice, l2reg)
+            _rwslice = _rwslice.reshape(dout, din)
+            _rbslice = _rbslice.reshape(dout, 1)
+            return layers.AffineLayer(_wslice,_bslice, _gwslice, _gbslice, _rwslice, _rbslice, l2reg)
             
         elif mrelu:
             if getParamSize: return 0 
             assert wslice.size==0
             assert gslice.size==0
+            assert rslice.size==0
             return layers.ReluLayer()
 
         elif mtanh:
             if getParamSize: return 0
             assert wslice.size==0
             assert gslice.size==0
+            assert rslice.size==0
             return layers.TanhLayer()
 
         elif msigmoid:
             if getParamSize: return 0
             assert wslice.size==0
             assert gslice.size==0
+            assert rslice.size==0
             return layers.SigmoidLayer()
 
         else:

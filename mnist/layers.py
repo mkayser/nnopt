@@ -43,11 +43,13 @@ class AffineLayer(AbstractLayer):
     # There are no accessors for parameters or gradients.
     # Instead, an external class owns parameters and gradients as a single
     # large flattened array.
-    def __init__(self,w,b,dw,db,reg):
+    def __init__(self,w,b,dw,db,rw,rb,reg):
         self.w_ = w
         self.b = b
         self.dw = dw
         self.db = db
+        self.rw = rw
+        self.rb = rb
         self.cached_xin = None
         self.reg = reg
 
@@ -133,7 +135,7 @@ class TanhLayer(AbstractLayer):
     # return din
     def bwd(self, dout):
         tanh_xin = self.cached_tanh_xin
-        din = 1 - (tanh_xin**2)
+        din = (1 - (tanh_xin**2)) * dout
         return din
 
     def l2reg_loss(self):
@@ -164,7 +166,7 @@ class SigmoidLayer(AbstractLayer):
     # return din
     def bwd(self, dout):
         sigmoid_xin = self.cached_sigmoid_xin
-        din = sigmoid_xin * (1.0 - sigmoid_xin)
+        din = sigmoid_xin * (1.0 - sigmoid_xin) * dout
         return din
 
     def l2reg_loss(self):

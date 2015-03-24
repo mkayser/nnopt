@@ -1,3 +1,9 @@
+- Grad check sigmoid
+- 
+
+
+
+
 - Efficient Hessian-vector multiplication
 - Efficient GN-vector multiplication
 - Definition of GN vector multiplication for classification loss

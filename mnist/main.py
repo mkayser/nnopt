@@ -24,16 +24,21 @@ def do_mnist():
 
     maxd = 784
 
-    n = 500
-    niter = 500
-    lr = .000001
+    n = images.shape[0]
+    mbsize = 10
+    niter = 10000
+
+    lr = .001
     (lrstep, lrmult) = (100, .9)
-    l2reg = 0.01
+    l2reg = 0.0001
     max_grad_norm = .1 / lr
-    std = 0.000001
+    std = .1
 
     X = images[:n,:,:]
     X = X.reshape((X.shape[0],-1)).T
+
+    X = X - X.min()
+    X = X / X.max()
 
     X = X[:maxd,:]
 
@@ -43,7 +48,8 @@ def do_mnist():
     print "X shape = ", X.shape
 
     #archstr = "a.{}.784_a.784.{}".format(d, d)
-    archstr = "a.{}.{}_s".format(d,d)
+    #archstr = "a.{}.100_t_a.100.{}".format(d,d)
+    archstr = "a.{}.{}".format(d,d)
     affinit = mlp.GaussianAffineInitializer(std,std)
     mlpa = mlp.MLPAutoencoder(archstr, l2reg, affinit)
 
@@ -52,20 +58,42 @@ def do_mnist():
     #print "Done."
     #showimage(w, 1)
 
-    #sgdobj = sgd.SGD(X, X, n, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
-    #sgdobj.train(mlpa, niter)
+    sgdobj = sgd.SGD(X, X, mbsize, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
+    sgdobj.train(mlpa, niter)
 
-    mlpa.fwd(X,X)
-    mlpa.bwd()
-    f = lambda: sum(mlpa.fwd(X,X)[1:])
-    g = lambda: mlpa.grad()
-    gradcheck.gradcheck(f, g, mlpa.w())
+    #mlpa.fwd(X,X)
+    #mlpa.bwd()
+    #f = lambda: sum(mlpa.fwd(X,X)[1:])
+    #g = lambda: mlpa.grad()
+    #gradcheck.gradcheck(f, g, mlpa.w())
 
 
-    w = mlpa.w_debug()[0][0]
-    #print np.linalg.norm(w), np.max(w), np.min(w), np.shape(w)
-    #print "Done."
-    showimage(w, w.max())
+    #w = mlpa.w_debug()[0][0]
+    #showimage(w, w.max())
+
+    (ypred, _, _) = mlpa.fwd(X,X)
+    
+    s = 5
+    indices = np.random.choice(n, s)
+    
+    ypredsample = ypred[:,indices]
+    Xsample = X[:,indices]
+    
+    ypredsample = ypredsample.T.reshape((s, 28, 28))
+    Xsample = Xsample.T.reshape((s,28,28))
+    
+    a = np.lib.pad(ypredsample, ((0,0),(4,4),(4,4)), 'constant')
+    b = np.lib.pad(Xsample, ((0,0),(4,4),(4,4)), 'constant')
+    
+    a = a.reshape(-1,36)
+    b = b.reshape(-1,36)
+
+    c = np.hstack((a,b))
+
+    showimage(c, c.max())
+    
+    
+    
 
 def do_test():
     np.random.seed(1003)
