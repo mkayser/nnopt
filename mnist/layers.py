@@ -11,6 +11,12 @@ class AbstractLayer(object):
     def bwd(self, do_g=False, do_Hv=False, do_Gv=False):
         pass
 
+    def get_istack(self):
+        return self.istack
+
+    def get_ostack(self):
+        return self.ostack
+
     def w_debug(self):
         return []
 

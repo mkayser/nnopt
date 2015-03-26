@@ -23,13 +23,15 @@ class GaussianAffineInitializer(AbstractAffineInitializer):
         
 
 # This is a little quirky because the autoencoder needs to know about minibatch size,
-# which is a training-specific piece of information. Could fix this later
+# which is a training-specific piece of information. Could change this later so that
+# the trainer initializes and owns the input/output blobs.
 class MLPAutoencoder(object):
     def __init__(self, specifier, mbsize, l2reg, affinit):
         tokens = specifier.split('_')
         self.layers = []
         self.layerSizes = []
         self.affinit = affinit
+        self.ready_to_backprop = False
 
         # Step through layer specifications and get parameter
         # sizes
@@ -41,10 +43,8 @@ class MLPAutoencoder(object):
             totalPSize += psize
             if i==0: totalIOSize += isize
             totalIOSize += osize
-            
         
-        
-        # Allocate underlying array
+        # Allocate underlying arrays
         # Each NN layer will have views into this array
         # For higher level classes like SGD, parameters can be
         # treated as a single flat vector, which is convenient
@@ -64,64 +64,92 @@ class MLPAutoencoder(object):
 
             layer = self.makeLayer(tok, l2reg, mbsize, pslice, islice, oslice)
             self.layers.append(layer)
+
+            if i==0:
+                istack = layer.get_istack()
+                self.X = istack.val
+            if i==len(self.layerSizes-1):
+                ostack = layer.get_ostack()
+                self.ypred = ostack.val
+
+        # Note that this field represents all parameters in a flat vector
+        self.w = self.paramstack.val
+
+        # Likewise, this field represents the gradient as a flat vector
+        self.g = self.paramstack.g
+
         self.l2reg = l2reg
+
+    #TODO
+    def set_v(self, v):
+        pass
+
+    #TODO
+    def load_w(self, w):
+        pass
+
+    #TODO
+    def load_X_y(self, X, y):
+        pass
         
-    def data_loss(self, ypred, y):
+    # TODO include Hv logic, eventaully generalize to softmax/crossentropy
+    def prop_data_loss(self, do_Hv=False, do_Gv=False):
+
+        go  = self.layers[-1].get_ostack().g
+        Hvo = self.layers[-1].get_ostack().Hv
+        Gvo = self.layers[-1].get_ostack().Gv
+
+        ro   = self.layers[-1].get_ostack().gtval
+
+        y = self.y
+        ypred = self.ypred
 
         diff = ypred-y
-        loss = np.sum(.5 * (diff**2)) / diff.shape[1]
-        din = diff / diff.shape[1]
-        return (loss, din)
+        n = diff.shape[1]
+
+        loss = np.sum(.5 * (diff**2)) / n
+
+        go[...]  = diff / n
+
+        if do_Hv:
+            Hvo[...] = ro / n
+        if do_Gv:
+            assert False, "Gaussian-vector products not implemented yet."
+            pass
+
+        return loss
 
     #TODO: modify SGD to use make_blobs and use input/output memory cleanly
-    def fwd(self, propmode=PropMode.Normal):
+    def fwd(self, do_Hv=False, do_Gv=False):
         reg_loss = 0
         data_loss = None
 
+        do_gtval = do_Hv or do_Gv
+
         for i,l in enumerate(self.layers):
-            inblob = self.iblobs[i] 
-            outblob = self.oblobs[i]
-            rinblob = self.r_iblobs[i]
-            routblob = self.r_oblobs[i]
-            l.fwd(inblob, outblob, rinblob, routblob)
+            l.fwd(do_val=True, do_gtval=do_gtval)
             reg_loss += l.l2reg_loss()
 
         if self.y is not None:
-            (data_loss,self.dout) = self.data_loss(self.ypred, self.y)
-            # TODO: backprop R
-            # TODO: dout is just another dout_blob
+            self.ready_to_backprop = True
+            data_loss = self.prop_data_loss(do_Hv=do_Hv, do_Gv=do_Gv)
 
         else:
-            self.dout = None
+            self.ready_to_backprop = False
             reg_loss = None
 
         return (data_loss, reg_loss)
 
-    def bwd(self, r=False):
+    def bwd(self, do_Hv=False, do_Gv=False):
+        assert self.ready_to_backprop
         for i,l in reversed(list(enumerate(self.layers))):
-            doutblob = self.g_oblobs[i]
-            dinblob  = self.g_iblobs[i]
-            l.bwd(doutblob, dinblob)
+            l.bwd(do_g=True, do_Hv=do_Hv, do_Gv=do_Gv)
         
-    def grad(self):
-        return self.grad_
-
-    def w(self):
-        return self.w_
-
     def w_debug(self):
         wlist = []
         for l in self.layers:
             wlist.append(l.w_debug())
         return wlist
-
-    # def wset(self, w):
-    #     for (l,lw) in zip(self.layers, w):
-    #         l.wset(lw)
-
-    # def wadd(self, wincr, mult):
-    #     for (l,lwincr) in zip(self.layers, wincr):
-    #         l.wadd(lwincr, mult)
 
     def makeLayer(self, specifier, l2reg, mbsize, pstack, istack, ostack):
         print "Layer spec: ",specifier
