@@ -2,6 +2,8 @@ import numpy as np
 import layers
 import sys
 import re
+from enum import Enum
+from blobstack import BlobStack
 
 class AbstractAffineInitializer(object):
     def __init__(self):
@@ -18,8 +20,12 @@ class GaussianAffineInitializer(AbstractAffineInitializer):
         w[...] = self.wstd * np.random.randn(w.size)
         b[...] = self.bstd * np.random.randn(b.size)
 
+        
+
+# This is a little quirky because the autoencoder needs to know about minibatch size,
+# which is a training-specific piece of information. Could fix this later
 class MLPAutoencoder(object):
-    def __init__(self, specifier, l2reg, affinit):
+    def __init__(self, specifier, mbsize, l2reg, affinit):
         tokens = specifier.split('_')
         self.layers = []
         self.layerSizes = []
@@ -27,30 +33,38 @@ class MLPAutoencoder(object):
 
         # Step through layer specifications and get parameter
         # sizes
-        totalSize = 0
-        for tok in tokens:
-            size = self.makeLayer(tok, l2reg, None, None, None, getParamSize=True)
-            self.layerSizes.append(size)
-            totalSize += size
-
-        # Allocate underlying arrays
-        # Each NN layer will have views into these arrays
+        totalPSize = 0
+        totalIOSize = 0
+        for i,tok in enumerate(tokens):
+            (isize, osize, psize) = self.makeLayer(tok, l2reg, mbsize, None, None, None, getParamSize=True)
+            self.layerSizes.append((isize, osize, psize))
+            totalPSize += psize
+            if i==0: totalIOSize += isize
+            totalIOSize += osize
+            
+        
+        
+        # Allocate underlying array
+        # Each NN layer will have views into this array
         # For higher level classes like SGD, parameters can be
         # treated as a single flat vector, which is convenient
-        self.w_ = np.zeros(totalSize)
-        self.grad_ = np.zeros(totalSize)
-        self.r_ = np.zeros(totalSize)
+        # w, g*, gtval, Hv*, Gv*
+        self.paramstack = BlobStack(np.zeros((5,totalPSize), order='c'))
+        self.iostack = BlobStack(np.zeros((5,totalIOSize), order='c'))
 
         # Make the actual layers
-        start=0
-        for tok,size in zip(tokens,self.layerSizes):
-            wslice = self.w_[start:start+size]
-            gslice = self.grad_[start:start+size]
-            rslice = self.r_[start:start+size]
-            layer = self.makeLayer(tok, l2reg, wslice, gslice, rslice)
+        pstart=0
+        iostart=0
+        for i, (tok, (isize, osize, psize)) in enumerate(zip(tokens,self.layerSizes)):
+            pslice = self.paramstack.subblob(pstart,pstart+psize)
+
+            islice = self.iostack.subblob(iostart, iostart+isize)
+            iostart += isize
+            oslice = self.iostack.subblob(iostart, iostart+osize)
+
+            layer = self.makeLayer(tok, l2reg, mbsize, pslice, islice, oslice)
             self.layers.append(layer)
         self.l2reg = l2reg
-        self.dout = None
         
     def data_loss(self, ypred, y):
 
@@ -59,29 +73,35 @@ class MLPAutoencoder(object):
         din = diff / diff.shape[1]
         return (loss, din)
 
-    def fwd(self, X, y):
-        curr = X
+    #TODO: modify SGD to use make_blobs and use input/output memory cleanly
+    def fwd(self, propmode=PropMode.Normal):
         reg_loss = 0
         data_loss = None
 
-        for l in self.layers:
-            curr = l.fwd(curr)
+        for i,l in enumerate(self.layers):
+            inblob = self.iblobs[i] 
+            outblob = self.oblobs[i]
+            rinblob = self.r_iblobs[i]
+            routblob = self.r_oblobs[i]
+            l.fwd(inblob, outblob, rinblob, routblob)
             reg_loss += l.l2reg_loss()
 
-        ypred = curr
+        if self.y is not None:
+            (data_loss,self.dout) = self.data_loss(self.ypred, self.y)
+            # TODO: backprop R
+            # TODO: dout is just another dout_blob
 
-        if y is not None:
-            (data_loss,self.dout) = self.data_loss(ypred, y)
         else:
             self.dout = None
             reg_loss = None
 
-        return (ypred, data_loss, reg_loss)
+        return (data_loss, reg_loss)
 
-    def bwd(self):
-        curr = self.dout
-        for l in reversed(self.layers):
-            curr = l.bwd(curr)
+    def bwd(self, r=False):
+        for i,l in reversed(list(enumerate(self.layers))):
+            doutblob = self.g_oblobs[i]
+            dinblob  = self.g_iblobs[i]
+            l.bwd(doutblob, dinblob)
         
     def grad(self):
         return self.grad_
@@ -103,21 +123,29 @@ class MLPAutoencoder(object):
     #     for (l,lwincr) in zip(self.layers, wincr):
     #         l.wadd(lwincr, mult)
 
-    def makeLayer(self, specifier, l2reg, wslice, gslice, rslice, getParamSize=False):
+    def makeLayer(self, specifier, l2reg, mbsize, pstack, istack, ostack):
         print "Layer spec: ",specifier
         maff = re.match(r"a\.(\d+)\.(\d+)$", specifier)
-        mrelu = re.match(r"r$", specifier)
-        mtanh = re.match(r"t$", specifier)
-        msigmoid = re.match(r"s$", specifier)
-       
+        mrelu = re.match(r"r\.(\d+)$", specifier)
+        mtanh = re.match(r"t\.(\d+)$", specifier)
+        msigmoid = re.match(r"s\.(\d+)$", specifier)
+
+        allNone = (pstack is None and istack is None and ostack is None)
+        someNone = (pstack is None or istack is None or ostack is None)
+        
+        assert (allNone or not someNone)
+
+        getSizeOnly = allNone
+
         if maff:
             din = int(maff.group(1))
             dout = int(maff.group(2))
-            if getParamSize: return din*dout + dout
+            psize = din*dout + dout
+            isize = din * mbsize
+            osize = dout * mbsize
+            if getSizeOnly: return (isize, osize, psize)
 
-            assert wslice.size == (din*dout)+dout
-            assert gslice.size == (din*dout)+dout
-            assert rslice.size == (din*dout)+dout
+            #assert x.size == (din*dout)+dout for x in [wslice, gslice, rslice, rgslice]
 
             # This is the conversion from a flat array to the
             # matrices that AffineLayer uses for its parameters.
@@ -129,43 +157,70 @@ class MLPAutoencoder(object):
             # which MLP uses, which is a flat vector, and the
             # layer-specific view, which sees slices of this vector
             # in the shape of matrices.
-            _wslice = wslice[:(din*dout)]
-            _bslice = wslice[(din*dout):]
-            _gwslice = gslice[:(din*dout)]
-            _gbslice = gslice[(din*dout):]
-            _rwslice = rslice[:(din*dout)]
-            _rbslice = rslice[(din*dout):]
-            
-            self.affinit.initialize(_wslice,_bslice)
 
-            _wslice  = _wslice.reshape(dout, din)
-            _bslice  = _bslice.reshape(dout, 1)
-            _gwslice = _gwslice.reshape(dout, din)
-            _gbslice = _gbslice.reshape(dout, 1)
-            _rwslice = _rwslice.reshape(dout, din)
-            _rbslice = _rbslice.reshape(dout, 1)
-            return layers.AffineLayer(_wslice,_bslice, _gwslice, _gbslice, _rwslice, _rbslice, l2reg)
+            assert pstack.size == psize
+            assert istack.size == isize
+            assert ostack.size == osize
+            
+            wstack = pstack.subblob(0,din*dout, shape=(dout,din))
+            bstack = pstack.subblob(din*dout, psize, shape=(dout,1))
+
+            istack.reshape_all((din,mbsize))
+            ostack.reshape_all((dout,mbsize))
+
+            self.affinit.initialize(wstack.m, bstack.m)
+
+            return layers.AffineLayer(wstack, bstack, istack, ostack, l2reg)
             
         elif mrelu:
-            if getParamSize: return 0 
-            assert wslice.size==0
-            assert gslice.size==0
-            assert rslice.size==0
-            return layers.ReluLayer()
+            dim = int(mrelu.group(1))
+            isize = dim * mbsize
+            osize = dim * mbsize
+            psize = 0
+            if getSizeOnly: return (isize, osize, psize)
+
+            assert pstack.size == psize
+            assert istack.size == isize
+            assert ostack.size == osize
+
+            istack.reshape_all((dim,mbsize))
+            ostack.reshape_all((dim,mbsize))
+            
+            return layers.ReluLayer(istack, ostack)
 
         elif mtanh:
-            if getParamSize: return 0
-            assert wslice.size==0
-            assert gslice.size==0
-            assert rslice.size==0
-            return layers.TanhLayer()
+            dim = int(mtanh.group(1))
+
+            isize = dim * mbsize
+            osize = dim * mbsize
+            psize = 0
+            if getSizeOnly: return (isize, osize, psize)
+
+            assert pstack.size == psize
+            assert istack.size == isize
+            assert ostack.size == osize
+
+            istack.reshape_all((dim,mbsize))
+            ostack.reshape_all((dim,mbsize))
+            
+            return layers.TanhLayer(istack, ostack)
 
         elif msigmoid:
-            if getParamSize: return 0
-            assert wslice.size==0
-            assert gslice.size==0
-            assert rslice.size==0
-            return layers.SigmoidLayer()
+            dim = int(msigmoid.group(1))
+
+            isize = dim * mbsize
+            osize = dim * mbsize
+            psize = 0
+            if getSizeOnly: return (isize, osize, psize)
+
+            assert pstack.size == psize
+            assert istack.size == isize
+            assert ostack.size == osize
+
+            istack.reshape_all((dim,mbsize))
+            ostack.reshape_all((dim,mbsize))
+            
+            return layers.SigmoidLayer(istack, ostack)
 
         else:
             sys.exit("Unknown layer: "+ specifier)
