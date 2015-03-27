@@ -153,28 +153,63 @@ def do_gradcheck():
     mlpa.bwd(do_Hv=False, do_Gv=False)
 
     np.set_printoptions(threshold=np.inf)
-    # print "----------------------------------------"
-    # print "IO"
-    # print mlpa.iostack.m
-    # print "Params"
-    # print mlpa.paramstack.m
-
-    # mlpa.paramstack.val[0] = 0
-    # mlpa.fwd(do_Hv=False, do_Gv=False)
-    # print "----------------------------------------"
-    # print "IO"
-    # print mlpa.iostack.m
-    # print "Params"
-    # print mlpa.paramstack.m
-
-
 
     f = lambda: sum(mlpa.fwd(do_Hv=False, do_Gv=False))
     g = lambda: mlpa.get_g()
-    gradcheck.gradcheck(f, g, mlpa.get_w(), mlpa, delta=1)
+    gradcheck.gradcheck(f, g, mlpa.get_w(), mlpa)
     
-    
-    
+
+
+def do_Hv_check():
+    np.random.seed(1003)
+
+    d = 40
+    n = 10
+    #X = np.random.randn(d,n)
+    X = np.random.randn(d,n)
+    std=.01
+    archstr = "a.{0}.{0}_s.{0}_a.{0}.{0}_t.{0}_a.{0}.{0}".format(d)
+    #archstr = "a.{0}.{0}_t.{0}_a.{0}.{0}".format(d)
+    #archstr = "a.{0}.{0}_a.{0}.{0}".format(d)
+    #archstr = "a.{0}.{0}".format(d)
+    affinit = mlp.GaussianAffineInitializer(std,std)
+    mlpa = mlp.MLPAutoencoder(archstr, n, 0.0, affinit)
+
+    #sgdobj = sgd.SGD(X, X, n, 1000, 1, .01)
+    #sgdobj.train(mlpa, 1000)
+
+    mlpa.set_X_y(X[...], X[...])
+    #w = mlpa.get_w()
+    #w[...] = 1.0
+
+    #mlpa.fwd(do_Hv=True, do_Gv=False)
+    #mlpa.bwd(do_Hv=True, do_Gv=False)
+
+    np.set_printoptions(threshold=np.inf)
+
+    Hv = lambda: compute_Hv(mlpa)
+    g  = lambda: compute_g(mlpa)
+    #p  = lambda(msg): print_state(msg, mlpa)
+    p = None
+    gradcheck.Hv_check(Hv, g, mlpa.get_v(), mlpa.get_w(), state_printer=p)
+
+def print_state(msg, mlpa):
+    print "--------",msg,"------------"
+    print "IO"
+    print mlpa.iostack.m
+    print "PARAM"
+    print mlpa.paramstack.m
+
+def compute_g(mlpa):
+    mlpa.fwd()
+    mlpa.bwd()
+    return mlpa.get_g()
+
+def compute_Hv(mlpa):
+    mlpa.fwd(do_Hv=True)
+    mlpa.bwd(do_Hv=True)
+    return mlpa.get_Hv()
+
 
 def do_test():
     np.random.seed(1003)
@@ -218,6 +253,7 @@ def do_test():
 
     
 if __name__ == "__main__":
-    do_mnist()
+    do_Hv_check()
+    #do_mnist()
     #do_test()
     #do_gradcheck()

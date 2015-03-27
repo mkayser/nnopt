@@ -81,6 +81,9 @@ class MLPAutoencoder(object):
         # This field represents the vector "v" in the product Hv, again as a flat vector
         self.v = self.paramstack.gtval
 
+        # This field represents the result of a Hessian-vector product
+        self.Hv = self.paramstack.Hv
+
         # For each minibatch we will assign to self.y, so for now it's None
         self.y = None
 
@@ -93,8 +96,14 @@ class MLPAutoencoder(object):
     def get_g(self):
         return self.g
 
+    def get_Hv(self):
+        return self.Hv
+
     def get_w(self):
         return self.w
+
+    def get_v(self):
+        return self.v
 
     def set_w(self, w):
         assert w.shape == self.w.shape

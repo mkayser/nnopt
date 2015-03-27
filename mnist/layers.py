@@ -240,6 +240,7 @@ class SigmoidLayer(AbstractLayer):
         if do_gtval:
             o = self.ostack.val
             ri = self.istack.gtval
+            ro = self.ostack.gtval
 
             # R{sigmoid(i)} = R{i} * sigmoid'(i)
             ro[...] = ri * o * (1-o)
