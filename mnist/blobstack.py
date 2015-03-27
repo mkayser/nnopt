@@ -11,6 +11,7 @@ class BlobStack(object):
         self.gtval = m[2]
         self.Hv = m[3]
         self.Gv = m[4]
+        self.size = self.val.size
         
     def subblob(self, start, end, shape=None):
         result = BlobStack(self.m[:,start:end])

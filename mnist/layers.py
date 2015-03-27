@@ -47,6 +47,7 @@ class AffineLayer(AbstractLayer):
             b = self.bstack.val
 
             o[...] = w.dot(i) + b
+            #print "FWD: ({})dot({}) + {} = {}".format(w.flatten()[0], i.flatten()[0], b.flatten()[0], o.flatten()[0])
 
         if do_gtval:
             i = self.istack.val

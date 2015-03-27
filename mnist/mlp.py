@@ -2,7 +2,6 @@ import numpy as np
 import layers
 import sys
 import re
-from enum import Enum
 from blobstack import BlobStack
 
 class AbstractAffineInitializer(object):
@@ -17,8 +16,8 @@ class GaussianAffineInitializer(AbstractAffineInitializer):
         self.bstd = bstd;
 
     def initialize(self, w, b):
-        w[...] = self.wstd * np.random.randn(w.size)
-        b[...] = self.bstd * np.random.randn(b.size)
+        w[...] = self.wstd * np.random.standard_normal(w.shape)
+        b[...] = self.bstd * np.random.standard_normal(b.shape)
 
         
 
@@ -38,7 +37,7 @@ class MLPAutoencoder(object):
         totalPSize = 0
         totalIOSize = 0
         for i,tok in enumerate(tokens):
-            (isize, osize, psize) = self.makeLayer(tok, l2reg, mbsize, None, None, None, getParamSize=True)
+            (isize, osize, psize) = self.makeLayer(tok, l2reg, mbsize, None, None, None)
             self.layerSizes.append((isize, osize, psize))
             totalPSize += psize
             if i==0: totalIOSize += isize
@@ -57,6 +56,7 @@ class MLPAutoencoder(object):
         iostart=0
         for i, (tok, (isize, osize, psize)) in enumerate(zip(tokens,self.layerSizes)):
             pslice = self.paramstack.subblob(pstart,pstart+psize)
+            pstart += psize
 
             islice = self.iostack.subblob(iostart, iostart+isize)
             iostart += isize
@@ -68,7 +68,7 @@ class MLPAutoencoder(object):
             if i==0:
                 istack = layer.get_istack()
                 self.X = istack.val
-            if i==len(self.layerSizes-1):
+            if i==len(self.layerSizes)-1:
                 ostack = layer.get_ostack()
                 self.ypred = ostack.val
 
@@ -78,21 +78,42 @@ class MLPAutoencoder(object):
         # Likewise, this field represents the gradient as a flat vector
         self.g = self.paramstack.g
 
+        # This field represents the vector "v" in the product Hv, again as a flat vector
+        self.v = self.paramstack.gtval
+
+        # For each minibatch we will assign to self.y, so for now it's None
+        self.y = None
+
         self.l2reg = l2reg
 
-    #TODO
     def set_v(self, v):
-        pass
+        assert v.shape == self.v.shape
+        self.v[...] = v
 
-    #TODO
-    def load_w(self, w):
-        pass
+    def get_g(self):
+        return self.g
 
-    #TODO
-    def load_X_y(self, X, y):
-        pass
+    def get_w(self):
+        return self.w
+
+    def set_w(self, w):
+        assert w.shape == self.w.shape
+        self.w[...] = w
+
+    def set_X_y(self, X, y):
+        assert X.shape == self.X.shape
+        assert y.shape == self.ypred.shape
+
+        # Note that self.y is one of the only cases where we assign a reference rather
+        # than populating in-place.
+        self.X[...] = X
+        self.y = y
+        self.ypred[...] = 0
+
+    def get_ypred(self):
+        return self.ypred
         
-    # TODO include Hv logic, eventaully generalize to softmax/crossentropy
+    # TODO eventaully generalize to softmax/crossentropy
     def prop_data_loss(self, do_Hv=False, do_Gv=False):
 
         go  = self.layers[-1].get_ostack().g
@@ -119,7 +140,6 @@ class MLPAutoencoder(object):
 
         return loss
 
-    #TODO: modify SGD to use make_blobs and use input/output memory cleanly
     def fwd(self, do_Hv=False, do_Gv=False):
         reg_loss = 0
         data_loss = None
@@ -152,7 +172,7 @@ class MLPAutoencoder(object):
         return wlist
 
     def makeLayer(self, specifier, l2reg, mbsize, pstack, istack, ostack):
-        print "Layer spec: ",specifier
+        #print "Layer spec: ",specifier
         maff = re.match(r"a\.(\d+)\.(\d+)$", specifier)
         mrelu = re.match(r"r\.(\d+)$", specifier)
         mtanh = re.match(r"t\.(\d+)$", specifier)
@@ -196,7 +216,7 @@ class MLPAutoencoder(object):
             istack.reshape_all((din,mbsize))
             ostack.reshape_all((dout,mbsize))
 
-            self.affinit.initialize(wstack.m, bstack.m)
+            self.affinit.initialize(wstack.val, bstack.val)
 
             return layers.AffineLayer(wstack, bstack, istack, ostack, l2reg)
             

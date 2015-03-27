@@ -21,7 +21,9 @@ class SGD(object):
         self.max_grad_norm = max_grad_norm
         
     def train(self, mlp, mbn):
-        
+
+        wdelta = np.zeros_like(mlp.get_w())
+
         for i in xrange(mbn):
             end = self.start + self.mb  
             ## because always divisible, this won't break
@@ -29,14 +31,16 @@ class SGD(object):
             X_curr = self.X[:,self.start:end]
             y_curr = self.y[:,self.start:end]
 
+            mlp.set_X_y(X_curr, y_curr)
+            
             # Fwd and Bwd passes
-            (_, data_loss, reg_loss) = mlp.fwd(X_curr, y_curr)
-            mlp.bwd()
+            (data_loss, reg_loss) = mlp.fwd(do_Hv=False, do_Gv=False)
+            mlp.bwd(do_Hv=False, do_Gv=False)
                         
-            grad = mlp.grad()
-            w = mlp.w()
+            grad = mlp.get_g()
+            w = mlp.get_w()
 
-            wdelta = -grad * self.lr
+            wdelta[...] = -grad * self.lr
 
             # Compute some stats for reporting
             norm_wdelta = np.linalg.norm(wdelta)
@@ -46,7 +50,7 @@ class SGD(object):
             
             #if self.curriter % 10 == 1: 
             #    print "data_loss={:.2E}  reg_loss={:.2E}  lr={:.2E}  w={}  -grad={}".format(data_loss, reg_loss, self.lr, w, -grad)
-            if self.curriter % 10 == 0: print "data_loss={:.2E}  reg_loss={:.2E}  lr={:.2E}  orig_grad={:.2E}  clip_grad={:.2E}  {}  stepsize={:.2E}  wnorm={:.2E}  wmin,max={:.2E},{:.2E}".format(data_loss, reg_loss, self.lr, np.linalg.norm(grad), np.linalg.norm(grad), ("C" if False else "."), norm_wdelta, norm_w, wmin, wmax)
+            if self.curriter % 10 == 0: print "it={}  data_loss={:.2E}  reg_loss={:.2E}  lr={:.2E}  orig_grad={:.2E}  clip_grad={:.2E}  {}  stepsize={:.2E}  wnorm={:.2E}  wmin,max={:.2E},{:.2E}".format(self.curriter, data_loss, reg_loss, self.lr, np.linalg.norm(grad), np.linalg.norm(grad), ("C" if False else "."), norm_wdelta, norm_w, wmin, wmax)
 
             # Update w in place
             w[...] += wdelta
