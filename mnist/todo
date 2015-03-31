@@ -4,8 +4,8 @@
 
 
 
-- Efficient Hessian-vector multiplication
-- Efficient GN-vector multiplication
+x Efficient Hessian-vector multiplication
+x Efficient GN-vector multiplication
 - Definition of GN vector multiplication for classification loss
 x- Implementation of CG
 x- CG initialization, CG termination criterion

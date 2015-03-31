@@ -1,4 +1,5 @@
 import numpy as np
+import random
 
 
 def gradcheck(f, g, w, delta=1e-4):
@@ -20,9 +21,13 @@ def gradcheck(f, g, w, delta=1e-4):
         print "indices={}  y1={:.6}  y2={:.6}  fdiff = {}   deriv = {}   relerror = {}".format(indices, y1, y2, fdiff, deriv, rel_error)
 
 
-def Hv_check(Hv, g, v, w, delta=1e-4, state_printer=None):
+def Hv_check(Hv, g, v, w, delta=1e-4, state_printer=None, random_subset_size=None):
 
-    for indices, val in np.ndenumerate(w):
+    pairs = list(np.ndenumerate(w))
+    if random_subset_size is not None:
+        pairs = random.sample(pairs, random_subset_size)
+
+    for indices, val in pairs:
         # Compute Hessian vector product
         v[...] = 0
         v[indices] = 1

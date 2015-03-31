@@ -99,7 +99,17 @@ class AffineLayer(AbstractLayer):
             Hvi[...] = w.T.dot(Hvo) + rw.T.dot(go)
 
         if do_Gv:
-            assert False, "Gv not implemented yet."
+            i = self.istack.val
+            w = self.wstack.val
+
+            Gvo = self.ostack.Gv
+            Gvi = self.istack.Gv
+            Gvw = self.wstack.Gv
+            Gvb = self.bstack.Gv
+
+            Gvb[...] = np.sum(Gvo, axis=1, keepdims=True)
+            Gvw[...] = Gvo.dot(i.T) + self.l2reg * 2 * w
+            Gvi[...] = w.T.dot(Gvo)
 
 
     def w_debug(self):
@@ -139,7 +149,6 @@ class ReluLayer(AbstractLayer):
 
         # Compute in place
         if do_Hv or do_g:
-
             i = self.istack.val
 
             go = self.ostack.g
@@ -156,7 +165,12 @@ class ReluLayer(AbstractLayer):
             Hvi[...] = Hvo * (i>0)
 
         if do_Gv:
-            assert False, "Gv not implemented yet."
+            i = self.istack.val
+
+            Gvo = self.ostack.Gv
+            Gvi = self.istack.Gv
+
+            Gvi[...] = Gvo * (i>0)
 
     def l2reg_loss(self):
         return 0
@@ -188,7 +202,6 @@ class TanhLayer(AbstractLayer):
 
         # Compute in place
         if do_Hv or do_g:
-
             o = self.ostack.val
             i = self.istack.val
 
@@ -211,7 +224,13 @@ class TanhLayer(AbstractLayer):
             Hvi[...] = Hvo - ((Hvo * o**2) + (go * 2 * o * ro))
 
         if do_Gv:
-            assert False, "Gv not implemented yet."
+            o = self.ostack.val
+            i = self.istack.val
+
+            Gvo = self.ostack.Gv
+            Gvi = self.istack.Gv
+
+            Gvi[...] = (1 - (o ** 2)) * Gvo
 
     def l2reg_loss(self):
         return 0
@@ -250,7 +269,6 @@ class SigmoidLayer(AbstractLayer):
         #din[...] = sigmoid_xin * (1.0 - sigmoid_xin) * dout
         # Compute in place
         if do_Hv or do_g:
-
             o = self.ostack.val
             i = self.istack.val
 
@@ -276,7 +294,13 @@ class SigmoidLayer(AbstractLayer):
             Hvi[...] = ro*go + o*Hvo - (2*o*ro*go + (o**2 * Hvo))
 
         if do_Gv:
-            assert False, "Gv not implemented yet."
+            o = self.ostack.val
+            i = self.istack.val
+
+            Gvo = self.ostack.Gv
+            Gvi = self.istack.Gv
+
+            Gvi[...] = o * (1-o) * Gvo
 
 
     def l2reg_loss(self):

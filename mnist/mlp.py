@@ -84,6 +84,9 @@ class MLPAutoencoder(object):
         # This field represents the result of a Hessian-vector product
         self.Hv = self.paramstack.Hv
 
+        # This field represents the result of a GaussNewton-vector product
+        self.Gv = self.paramstack.Gv
+
         # For each minibatch we will assign to self.y, so for now it's None
         self.y = None
 
@@ -98,6 +101,9 @@ class MLPAutoencoder(object):
 
     def get_Hv(self):
         return self.Hv
+
+    def get_Gv(self):
+        return self.Gv
 
     def get_w(self):
         return self.w
@@ -144,10 +150,32 @@ class MLPAutoencoder(object):
         if do_Hv:
             Hvo[...] = ro / n
         if do_Gv:
-            assert False, "Gaussian-vector products not implemented yet."
-            pass
+            Gvo[...] = ro / n
 
         return loss
+
+    def compute_Hv(self, v):
+        self.set_v(v)
+        self.fwd(do_Hv=True, do_Gv=False)
+        self.bwd(do_Hv=True, do_Gv=False)
+        return self.Hv
+
+    def compute_Gv(self, v):
+        self.set_v(v)
+        self.fwd(do_Hv=False, do_Gv=True)
+        self.bwd(do_Hv=False, do_Gv=True)
+        return self.Hv
+
+    def f_g(self, w, compute_g=True, do_Hv=False, do_Gv=False):
+        self.set_w(w)
+        (data_loss, reg_loss) = self.fwd(do_Hv=do_Hv, do_Gv=do_Gv)
+        loss = data_loss + reg_loss
+
+        if compute_g:
+            self.bwd(do_Hv=do_Hv, do_Gv=do_Gv)
+            return (loss, self.g[...])
+        else:
+            return (loss, None)
 
     def fwd(self, do_Hv=False, do_Gv=False):
         reg_loss = 0

@@ -5,43 +5,46 @@ from pprint import pprint
 # MAX = max iterations
 # K = see Martens
 # EPS = see Martens
-# A = sufficient information for implicit computation of bbA
-# C = sufficient information for implicit computation of bbC
 # x0 = initial point, just use 0, but could use xprev?
-def cg(x0, A, M, b, bbA, bbMinv, MAX, K, EPS, NU): 
+def cg(x0, bbA, bbMinv, b, MAX, K, EPS, NU): 
     x = x0
-    Ax = bbA(A,x)
+    Ax = bbA(x)
     r = Ax - b
-    y = bbMinv(M, r)
+    y = bbMinv(r)
     p = -r
     q = x.dot(r)
     VALS = [q];
     ry_prev = r.dot(y)
     k=0
 
-    while not cg_term(np.linalg.norm(b), np.linalg.norm(r), VALS, MAX, K, EPS, NU):
+    dir_hist = [p]
+
+    bnorm = np.linalg.norm(b)
+
+    while not cg_term(bnorm, np.linalg.norm(r), VALS, MAX, K, EPS, NU):
         k += 1
-        Ap = bbA(A,p)
+        Ap = bbA(p)
 
         pAp = p.dot(Ap)
         if pAp < 0:
             # DNC
             if k==1:
-                return (None,p)
+                return (None, p, dir_hist)
             else:
-                return (x,p)
+                return (x, p, dir_hist)
         #pprint(locals())
         alpha = r.dot(y) / pAp
         x = x + alpha * p
         r = r + alpha * Ap
         q = x.dot(r)
         VALS.append(q)
-        y = bbMinv(M,r)
+        y = bbMinv(r)
         ry = r.dot(y)
         beta = ry / ry_prev
         ry_prev = ry
         p = -y + beta * p
-    return (x,None)
+        dir_hist.append((p,q))
+    return (x, None, dir_hist)
         
 
 # All termination conditions except negative curvature
