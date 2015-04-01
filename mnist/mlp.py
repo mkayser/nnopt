@@ -113,7 +113,7 @@ class MLPAutoencoder(object):
 
     def set_w(self, w):
         assert w.shape == self.w.shape
-        self.w[...] = w
+        self.w[...] = w[...]
 
     def set_X_y(self, X, y):
         assert X.shape == self.X.shape
@@ -168,6 +168,7 @@ class MLPAutoencoder(object):
 
     def f_g(self, w, compute_g=True, do_Hv=False, do_Gv=False):
         self.set_w(w)
+        #print "Wnorm: ",np.linalg.norm(w)
         (data_loss, reg_loss) = self.fwd(do_Hv=do_Hv, do_Gv=do_Gv)
         loss = data_loss + reg_loss
 

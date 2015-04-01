@@ -17,7 +17,7 @@ def cg(x0, bbA, bbMinv, b, MAX, K, EPS, NU):
     ry_prev = r.dot(y)
     k=0
 
-    dir_hist = [p]
+    dir_hist = []
 
     bnorm = np.linalg.norm(b)
 
@@ -42,8 +42,8 @@ def cg(x0, bbA, bbMinv, b, MAX, K, EPS, NU):
         ry = r.dot(y)
         beta = ry / ry_prev
         ry_prev = ry
-        p = -y + beta * p
         dir_hist.append((p,q))
+        p = -y + beta * p
     return (x, None, dir_hist)
         
 
@@ -55,7 +55,7 @@ def cg_term(r0, r, vals, m, k, eps, resid_mult):
 
     if len(vals) >= m: 
         return True
-    
+
     if vals[-1] >= 0:
         return False
 
@@ -68,11 +68,3 @@ def cg_term(r0, r, vals, m, k, eps, resid_mult):
     if (last-first)/first < k*eps:
         return True
             
-
-def bbMinv_diag(M, x):
-    return np.linalg.solve(M,x)
-    #return (1/M).dot(x)
-
-def bb_simpleMult(A, x):
-    return A.dot(x)
-

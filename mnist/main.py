@@ -44,7 +44,7 @@ def do_mnist():
     (n,H,W) = images.shape
 
     n = 10000
-    mbsize = 1000
+    mbsize = 10000
 
     lr = .1
     (lrstep, lrmult) = (1000, .9)
@@ -79,7 +79,7 @@ def do_mnist():
 
     #mlpa.set_w(np.concatenate((np.eye(784).flatten(),np.zeros(784))))
 
-    train_sgd = False
+    train_sgd = True
     train_truncnewton = True
     gcheck = False
     Hvcheck = False
@@ -88,14 +88,20 @@ def do_mnist():
 
         
     if train_sgd:
-        niter = 1000
-        sgdobj = sgd.SGD(X, X, mbsize, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
+        niter = 100
+        sgdobj = sgd.SGD(X[:,:mbsize], X[:,:mbsize], mbsize, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
         sgdobj.train(mlpa, niter)
 
     if train_truncnewton:
-        bbHv = lambda(v): mlpa.compute_Gv(v)
+        bbGv = lambda(v): mlpa.compute_Gv(v)
+        bbHv = lambda(v): mlpa.compute_Hv(v)
         bbIdentity = lambda(v): v
-        truncatedNewton.truncatedNewton(mlpa.get_w(), mlpa, 1, X, X, bbHv, bbIdentity, mbsize, 
+ 
+        mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
+        (data_loss, reg_loss) = mlpa.fwd(do_Hv=False, do_Gv=False)
+        print "Initial loss: {:.3}".format(data_loss+reg_loss)
+       
+        truncatedNewton.truncatedNewton(mlpa.get_w(), mlpa, 1.0, X[:,:mbsize], X[:,:mbsize], bbHv, bbIdentity, mbsize, 
                                         backtrack=True, momentum=False, damp_dnc=True)
 
 
