@@ -13,14 +13,25 @@ def data_batch(X,y,start,n,N):
     return (start, X_curr, y_curr)
 
 def bb_shifted(bb,lam):
-    return lambda(v): bb(v)+lam*v
+    return (lambda(v): bb(v)+lam*v)
+
+class UpdateParams(object):
+    def __init__(self, line_search, ls_curv, ):
+        self.line_search = line_search
+        if line_search:
+            self.curvilinear = ls_curv
+            self.wolfe_c1 = ls_wolfe_c1
+            self.wolfe_c2 = ls_wolfe_c2
+            
 
 def truncatedNewton(w0, model, lambda_0, 
                     X, y, 
                     bbHv_orig, bbMinv, n, 
+                    MAXTRUNC,
                     backtrack=False, 
                     momentum=False,
-                    damp_dnc=True):
+                    damp_dnc=True,
+                    trust_region=True):
     start = 0
     converged = False
     N = X.shape[1]
@@ -30,8 +41,8 @@ def truncatedNewton(w0, model, lambda_0,
 
     K=10
     MAX=25
-    EPS=.01
-    NU=.0001
+    EPS=.001
+    NU=.001
     
     d0 = np.zeros_like(w0)
 
@@ -53,9 +64,10 @@ def truncatedNewton(w0, model, lambda_0,
         #print "BEGINNING: wnorm=",np.linalg.norm(w)
         (f,g) = model.f_g(w)
 
-        (dd, dnc, dd_hist) = cg.cg(d0, bbHv, bbMinv, -g, MAX, K, EPS, NU)
+        (dd, dnc, dd_hist, reason) = cg.cg(f, d0, bbHv, bbMinv, -g, MAX, K, EPS, NU)
 
-        assert dd is None or g.dot(dd) < 0
+        dirderiv=g.dot(dd)
+        assert dd is None or dirderiv < 0
         if dnc is not None and g.dot(dnc) > 0:
             dnc = -dnc
 
@@ -83,18 +95,18 @@ def truncatedNewton(w0, model, lambda_0,
         ratio = actual / predicted
 
 
-        if damp_dnc and dnc is not None: 
-            lam *= 1.5
-        else:
-            if ratio < .25: 
+        if trust_region:
+            if damp_dnc and dnc is not None: 
                 lam *= 1.5
-            elif ratio > .75: 
-                lam /= 1.5
-
-        bbHv = bb_shifted(bbHv_orig, lam)
+            else:
+                if ratio < .25: 
+                    lam *= 1.5
+                elif ratio > .75: 
+                    lam /= 1.5
+            bbHv = bb_shifted(bbHv_orig, lam)
 
         # TODO: use directions of negative curvature in line search
-        print "starti={}  NormW={:.3}  NormD={:.3}  DNC={}  CG_HIST={}  ***OBJ**={:.3}  nextobj={:.3}  decf={:.2}  decq={:.2}  redratio={:.2}  lambda={:.2}".format(start, np.linalg.norm(w), np.linalg.norm(bestd), dnc is not None, len(dd_hist), f, bestf, actual, predicted, ratio, lam)
+        print "***OBJ**={:.3}  nextobj={:.3}  starti={}  NormW={:.3}  NormD={:.3}  NormG={:.3}  DirDeriv={:.3}  DNC={}  CG_HIST={}  decf={:.2}  decq={:.2}  redratio={:.2}  lambda={:.2}  reason={}".format(f, bestf, start, np.linalg.norm(w), np.linalg.norm(bestd), np.linalg.norm(g), dirderiv/(np.linalg.norm(g)*np.linalg.norm(dd)), dnc is not None, len(dd_hist),  actual, predicted, ratio, lam, reason)
 
         # Update w
         if actual > 0:
@@ -105,7 +117,7 @@ def truncatedNewton(w0, model, lambda_0,
         if momentum:
             d0 = dd
         
-        if i==1000:
+        if i==MAXTRUNC:
             converged = True
 
 

@@ -36,21 +36,15 @@ def do_mnist():
     images = images.astype(float)
     images = (images - images.mean())
 
-    images = downsample(images)
-    #images = downsample(images)
-
     maxd = images.shape[1] * images.shape[2]
 
     (n,H,W) = images.shape
 
-    n = 10000
-    mbsize = 10000
-
-    lr = .1
-    (lrstep, lrmult) = (1000, .9)
-    l2reg = 0.0
-    max_grad_norm = .1 / lr
+    n = 100
+    mbsize = n
     std = .01
+    l2reg = 0.0
+
 
     X = images[:n,:,:]
     X = X.reshape((X.shape[0],-1)).T
@@ -68,7 +62,8 @@ def do_mnist():
     #archstr = "a.{}.100_t_a.100.{}".format(d,d)
     #archstr = "a.{}.100_s.100_a.100.100_s.100_a.100.{}".format(d,d)
     #archstr = "a.{}.100_a.100.{}".format(d,d)
-    archstr = "a.{0}.{1}_t.{1}_a.{1}.{1}_t.{1}_a.{1}.{1}_t.{1}_a.{1}.{0}".format(d,100)
+    #archstr = "a.{0}.{1}_t.{1}_a.{1}.{1}_t.{1}_a.{1}.{1}_t.{1}_a.{1}.{0}".format(d,100)
+    archstr = "a.{0}.{1}_t.{1}_a.{1}.{0}".format(d,100)
     affinit = mlp.GaussianAffineInitializer(std,std)
     mlpa = mlp.MLPAutoencoder(archstr, mbsize, l2reg, affinit)
 
@@ -79,17 +74,21 @@ def do_mnist():
 
     #mlpa.set_w(np.concatenate((np.eye(784).flatten(),np.zeros(784))))
 
-    train_sgd = True
+    train_sgd = False
     train_truncnewton = True
     gcheck = False
     Hvcheck = False
     calcritzHv = False
     calcritzGv = False
+    show = True
 
         
     if train_sgd:
-        niter = 100
-        sgdobj = sgd.SGD(X[:,:mbsize], X[:,:mbsize], mbsize, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
+        niter = 2000
+        lr = .01
+        (lrstep, lrmult) = (1000, .9)
+        max_grad_norm = .1 / lr
+        sgdobj = sgd.SGD(X, X, mbsize, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
         sgdobj.train(mlpa, niter)
 
     if train_truncnewton:
@@ -101,8 +100,11 @@ def do_mnist():
         (data_loss, reg_loss) = mlpa.fwd(do_Hv=False, do_Gv=False)
         print "Initial loss: {:.3}".format(data_loss+reg_loss)
        
-        truncatedNewton.truncatedNewton(mlpa.get_w(), mlpa, 1.0, X[:,:mbsize], X[:,:mbsize], bbHv, bbIdentity, mbsize, 
-                                        backtrack=True, momentum=False, damp_dnc=True)
+        truncatedNewton.truncatedNewton(mlpa.get_w(), 
+                                        mlpa, .1, 
+                                        X[:,:mbsize], X[:,:mbsize], 
+                                        bbGv, bbIdentity, mbsize, 20,
+                                        backtrack=True, momentum=True, damp_dnc=True)
 
 
     if calcritzHv:
@@ -121,7 +123,7 @@ def do_mnist():
         mlpa.bwd(do_Hv=False, do_Gv=False)
         g = mlpa.get_g()
         bbGv = lambda(v): compute_Gv_given_v(mlpa,v)
-        ritz.ritz_lanczos(bbGv,g,iters_to_compute=(20,1000))
+        ritz.ritz_lanczos(bbGv,g,iters_to_compute=(20,100))
     
     if gcheck:
         mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
@@ -143,7 +145,7 @@ def do_mnist():
         gradcheck.Hv_check(Hv, g, mlpa.get_v(), mlpa.get_w(), state_printer=p, random_subset_size=100)
 
 
-    if train:
+    if show:
         mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
         
         (_, _) = mlpa.fwd(do_Hv=False, do_Gv=False)

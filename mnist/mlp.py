@@ -164,7 +164,7 @@ class MLPAutoencoder(object):
         self.set_v(v)
         self.fwd(do_Hv=False, do_Gv=True)
         self.bwd(do_Hv=False, do_Gv=True)
-        return self.Hv
+        return self.Gv
 
     def f_g(self, w, compute_g=True, do_Hv=False, do_Gv=False):
         self.set_w(w)
