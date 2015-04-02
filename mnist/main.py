@@ -76,16 +76,17 @@ def do_mnist():
 
     train_sgd = False
     train_truncnewton = True
+    use_hessian=True
     gcheck = False
     Hvcheck = False
-    calcritzHv = False
+    calcritzHv = True
     calcritzGv = False
-    show = True
+    show = False
 
         
     if train_sgd:
         niter = 2000
-        lr = .01
+        lr = .05
         (lrstep, lrmult) = (1000, .9)
         max_grad_norm = .1 / lr
         sgdobj = sgd.SGD(X, X, mbsize, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
@@ -94,6 +95,7 @@ def do_mnist():
     if train_truncnewton:
         bbGv = lambda(v): mlpa.compute_Gv(v)
         bbHv = lambda(v): mlpa.compute_Hv(v)
+        bb = bbHv if use_hessian else bbGv
         bbIdentity = lambda(v): v
  
         mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
@@ -102,9 +104,9 @@ def do_mnist():
        
         truncatedNewton.truncatedNewton(mlpa.get_w(), 
                                         mlpa, .1, 
-                                        X[:,:mbsize], X[:,:mbsize], 
-                                        bbGv, bbIdentity, mbsize, 20,
-                                        backtrack=True, momentum=True, damp_dnc=True)
+                                        X, X, 
+                                        bb, bbIdentity, mbsize, 50,
+                                        backtrack=True, momentum=True, damp_dnc=True, trust_region=True)
 
 
     if calcritzHv:
@@ -114,7 +116,7 @@ def do_mnist():
         mlpa.bwd(do_Hv=False, do_Gv=False)
         g = mlpa.get_g()
         bbHv = lambda(v): compute_Hv_given_v(mlpa,v)
-        ritz.ritz_lanczos(bbHv,g,iters_to_compute=(20,200,1000))
+        ritz.ritz_lanczos(bbHv,g,iters_to_compute=(20,200))
 
     if calcritzGv:
         mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])

@@ -1,5 +1,6 @@
 import numpy as np
 import cg
+import time
 
 # Columns of X are data points
 # Columns of y are corresponding label vectors 
@@ -28,10 +29,12 @@ def truncatedNewton(w0, model, lambda_0,
                     X, y, 
                     bbHv_orig, bbMinv, n, 
                     MAXTRUNC,
+                    MAXCG=50,
                     backtrack=False, 
                     momentum=False,
                     damp_dnc=True,
-                    trust_region=True):
+                    trust_region=True, 
+                    verbose=False):
     start = 0
     converged = False
     N = X.shape[1]
@@ -40,9 +43,8 @@ def truncatedNewton(w0, model, lambda_0,
     w = w0.copy()
 
     K=10
-    MAX=25
     EPS=.001
-    NU=.001
+    NU=.00001
     
     d0 = np.zeros_like(w0)
 
@@ -52,7 +54,9 @@ def truncatedNewton(w0, model, lambda_0,
 
     i = 0
 
+    starttime = time.clock()
     while not converged:
+        
         i += 1
 
         # Get subset for gradient/Hv computation
@@ -61,12 +65,11 @@ def truncatedNewton(w0, model, lambda_0,
         
         # Compute value and gradient
 
-        #print "BEGINNING: wnorm=",np.linalg.norm(w)
         (f,g) = model.f_g(w)
 
-        (dd, dnc, dd_hist, reason) = cg.cg(f, d0, bbHv, bbMinv, -g, MAX, K, EPS, NU)
+        (dd, dnc, dd_hist, reason) = cg.cg(f, d0, bbHv, bbMinv, -g, MAXCG, K, EPS, NU)
 
-        dirderiv=g.dot(dd)
+        dirderiv=999 if dd is None else g.dot(dd)
         assert dd is None or dirderiv < 0
         if dnc is not None and g.dot(dnc) > 0:
             dnc = -dnc
@@ -77,13 +80,15 @@ def truncatedNewton(w0, model, lambda_0,
             bestf = None
             bestapproxf = None # Value of quadratic approximation
             for d,approxf in reversed(dd_hist):
-                #print "BEFORE: ",np.linalg.norm(w)
                 (fnew,_) = model.f_g(w+d, compute_g=False)
-                #print "AFTER: ",np.linalg.norm(w)
                 if bestf is None or bestf > fnew:
                     (bestf,bestd,bestapproxf) = (fnew,d,approxf)
+                    if verbose:
+                        print "BACKTRACK: F={:.3}  |D|={:.3}  Q={:.3}".format(bestf,np.linalg.norm(bestd),bestapproxf)
                 elif bestf is not None:
                     # Stop backtracking as soon as score stops improving
+                    if verbose:
+                        print "STOP-BACKTRACK: ",fnew
                     break
         else:
             bestd = dd
@@ -106,11 +111,11 @@ def truncatedNewton(w0, model, lambda_0,
             bbHv = bb_shifted(bbHv_orig, lam)
 
         # TODO: use directions of negative curvature in line search
-        print "***OBJ**={:.3}  nextobj={:.3}  starti={}  NormW={:.3}  NormD={:.3}  NormG={:.3}  DirDeriv={:.3}  DNC={}  CG_HIST={}  decf={:.2}  decq={:.2}  redratio={:.2}  lambda={:.2}  reason={}".format(f, bestf, start, np.linalg.norm(w), np.linalg.norm(bestd), np.linalg.norm(g), dirderiv/(np.linalg.norm(g)*np.linalg.norm(dd)), dnc is not None, len(dd_hist),  actual, predicted, ratio, lam, reason)
+        elapsed=time.clock()-starttime
+        print "***OBJ**={:.3}  elapsed={:.3}s  nextobj={:.3}  starti={}  NormW={:.3}  NormD={:.3}  NormG={:.3}  DirDeriv={:.3}  DNC={}  CG_HIST={}  decf={:.2}  decq={:.2}  redratio={:.2}  lambda={:.2}  reason={}".format(f, elapsed, bestf, start, np.linalg.norm(w), np.linalg.norm(bestd), np.linalg.norm(g), dirderiv/(np.linalg.norm(g)*np.linalg.norm(dd)), dnc is not None, len(dd_hist),  actual, predicted, ratio, lam, reason)
 
         # Update w
         if actual > 0:
-            #print "Changing w..."
             w += bestd
 
         # Set starting dir for next time

@@ -1,6 +1,7 @@
 import numpy as np
 import mlp
 import paramutils
+import time
 
 
 class SGD(object):
@@ -23,6 +24,8 @@ class SGD(object):
     def train(self, mlp, mbn):
 
         wdelta = np.zeros_like(mlp.get_w())
+
+        starttime = time.clock()
 
         for i in xrange(mbn):
             end = self.start + self.mb  
@@ -50,7 +53,8 @@ class SGD(object):
             
             #if self.curriter % 10 == 1: 
             #    print "data_loss={:.2E}  reg_loss={:.2E}  lr={:.2E}  w={}  -grad={}".format(data_loss, reg_loss, self.lr, w, -grad)
-            if self.curriter % 10 == 0: print "it={}  data_loss={:.2E}  reg_loss={:.2E}  lr={:.2E}  orig_grad={:.2E}  clip_grad={:.2E}  {}  stepsize={:.2E}  wnorm={:.2E}  wmin,max={:.2E},{:.2E}".format(self.curriter, data_loss, reg_loss, self.lr, np.linalg.norm(grad), np.linalg.norm(grad), ("C" if False else "."), norm_wdelta, norm_w, wmin, wmax)
+            elapsed = time.clock() - starttime
+            if self.curriter % 10 == 0: print "it={}  data_loss={:.2E}  reg_loss={:.2E}  elapsed={:.3}s  lr={:.2E}  orig_grad={:.2E}  clip_grad={:.2E}  {}  stepsize={:.2E}  wnorm={:.2E}  wmin,max={:.2E},{:.2E}".format(self.curriter, data_loss, reg_loss, elapsed, self.lr, np.linalg.norm(grad), np.linalg.norm(grad), ("C" if False else "."), norm_wdelta, norm_w, wmin, wmax)
 
             # Update w in place
             w[...] += wdelta

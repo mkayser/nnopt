@@ -6,7 +6,7 @@ from pprint import pprint
 # K = see Martens
 # EPS = see Martens
 # x0 = initial point, just use 0, but could use xprev?
-def cg(f0, x0, bbA, bbMinv, b, MAX, K, EPS, NU): 
+def cg(f0, x0, bbA, bbMinv, b, MAX, K, EPS, NU, verbose=False): 
     x = x0
     Ax = bbA(x)
     r = Ax - b
@@ -33,24 +33,24 @@ def cg(f0, x0, bbA, bbMinv, b, MAX, K, EPS, NU):
         if pAp < 0:
             # DNC
             if k==1:
-                return (None, p, dir_hist)
+                #TODO
+                return (x, p, dir_hist, "DNC")
             else:
-                return (x, p, dir_hist)
+                return (x, p, dir_hist, "DNC")
         #pprint(locals())
         rdotytemp = r.dot(y)
         alpha = r.dot(y) / pAp
         x = x + alpha * p
         r = r + alpha * Ap
-        #q = x.dot(r)
         q = f0 + (.5 * x.dot(bbA(x))) - b.dot(x)
-        #print "  rdoty={}  pAp={}  alpha={}".format(
-        #    rdotytemp, pAp, alpha)
+        if verbose:
+            print "|R|={:.5}  |P|={:.5}  Q={:.5}  |XDIFF|={:.5}".format(np.linalg.norm(r), np.linalg.norm(p), q, np.linalg.norm(x-x0))
         VALS.append(q)
         y = bbMinv(r)
         ry = r.dot(y)
         beta = ry / ry_prev
         ry_prev = ry
-        dir_hist.append((p,q))
+        dir_hist.append((x,q))
         p = -y + beta * p
         (finished, reason) = cg_term(bnorm, np.linalg.norm(r), VALS, MAX, K, EPS, NU)
 
