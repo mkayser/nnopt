@@ -5,7 +5,7 @@ import time
 
 
 class SGD(object):
-    def __init__(self, X, y, mb, lrstep, lrmult, lrinit, max_grad_norm=10e5):
+    def __init__(self, X, y, mb, lrstep, lrmult, lrinit, max_grad_norm=10e5, statc=None):
         self.lr = lrinit
         self.lrmult = lrmult
         self.mb = mb
@@ -20,12 +20,15 @@ class SGD(object):
         self.start = 0
         self.curriter = 0
         self.max_grad_norm = max_grad_norm
+        self.statc=statc
         
     def train(self, mlp, mbn):
 
         wdelta = np.zeros_like(mlp.get_w())
 
         starttime = time.clock()
+        elapsedtime = 0
+        samples_seen=0
 
         for i in xrange(mbn):
             end = self.start + self.mb  
@@ -33,6 +36,8 @@ class SGD(object):
             assert end <= self.n, "end, {} is not leq than set size, {}".format(end, self.n)
             X_curr = self.X[:,self.start:end]
             y_curr = self.y[:,self.start:end]
+
+            samples_seen += self.mb
 
             mlp.set_X_y(X_curr, y_curr)
             
@@ -53,8 +58,12 @@ class SGD(object):
             
             #if self.curriter % 10 == 1: 
             #    print "data_loss={:.2E}  reg_loss={:.2E}  lr={:.2E}  w={}  -grad={}".format(data_loss, reg_loss, self.lr, w, -grad)
-            elapsed = time.clock() - starttime
-            if self.curriter % 10 == 0: print "it={}  data_loss={:.2E}  reg_loss={:.2E}  elapsed={:.3}s  lr={:.2E}  orig_grad={:.2E}  clip_grad={:.2E}  {}  stepsize={:.2E}  wnorm={:.2E}  wmin,max={:.2E},{:.2E}".format(self.curriter, data_loss, reg_loss, elapsed, self.lr, np.linalg.norm(grad), np.linalg.norm(grad), ("C" if False else "."), norm_wdelta, norm_w, wmin, wmax)
+            if self.curriter % 10 == 0: 
+                elapsedtime += time.clock() - starttime
+                print "it={}  data_loss={:.2E}  reg_loss={:.2E}  elapsed={:.3}s  lr={:.2E}  orig_grad={:.2E}  clip_grad={:.2E}  {}  stepsize={:.2E}  wnorm={:.2E}  wmin,max={:.2E},{:.2E}".format(self.curriter, data_loss, reg_loss, elapsedtime, self.lr, np.linalg.norm(grad), np.linalg.norm(grad), ("C" if False else "."), norm_wdelta, norm_w, wmin, wmax)
+                if self.statc is not None:
+                    self.statc.add(w, samples_seen, elapsedtime, data_loss+reg_loss)
+                starttime=time.clock()
 
             # Update w in place
             w[...] += wdelta

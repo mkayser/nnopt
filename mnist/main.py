@@ -7,6 +7,7 @@ import gradcheck
 import ritz
 import truncatedNewton
 from pylab import *
+import matplotlib.pyplot as plt
 
 def showimage(m, maxval):
     assert len(m.shape)==2
@@ -15,6 +16,7 @@ def showimage(m, maxval):
     m = m / m.max()
     m = (m * 255.0).astype(int)
     #m = np.maximum(255.0, ((m / maxval)* 255.0)).astype(int)
+    plt.clf()
     imshow(m, cmap=cm.gray)
     show()
 
@@ -29,6 +31,12 @@ def downsample(images):
             result[:,hh,ww] = images[:,hh*2:hh*2+1,ww*2:ww*2+1].mean(axis=(1,2))
     return result
 
+def mnist_prepare(X):
+    X = X.reshape((X.shape[0],-1)).T
+    X = X - X.min()
+    X = X / X.max()
+    return X
+
 def do_mnist():
     np.random.seed(1003)
     images, labels = mnist.load_mnist('training')
@@ -36,147 +44,207 @@ def do_mnist():
     images = images.astype(float)
     images = (images - images.mean())
 
-    maxd = images.shape[1] * images.shape[2]
-
     (n,H,W) = images.shape
 
-    n = 100
-    mbsize = n
+    n = 1000
+    nv = 100
+    mbsize = 1000
     std = .01
     l2reg = 0.0
 
 
-    X = images[:n,:,:]
-    X = X.reshape((X.shape[0],-1)).T
+    X = mnist_prepare(images[:n,:,:])
+    Xv = mnist_prepare(images[n:n+nv,:,:])
 
-    X = X - X.min()
-    X = X / X.max()
-
-    X = X[:maxd,:]
-
-    d = X.shape[0]
-    n = X.shape[1]
+    d  = X.shape[0]
+    n  = X.shape[1]
+    nv = Xv.shape[1]
 
     print "X shape = ", X.shape
 
     #archstr = "a.{}.100_t_a.100.{}".format(d,d)
     #archstr = "a.{}.100_s.100_a.100.100_s.100_a.100.{}".format(d,d)
     #archstr = "a.{}.100_a.100.{}".format(d,d)
-    #archstr = "a.{0}.{1}_t.{1}_a.{1}.{1}_t.{1}_a.{1}.{1}_t.{1}_a.{1}.{0}".format(d,100)
-    archstr = "a.{0}.{1}_t.{1}_a.{1}.{0}".format(d,100)
+    archstr = "a.{0}.{1}_t.{1}_a.{1}.{1}_t.{1}_a.{1}.{1}_t.{1}_a.{1}.{0}".format(d,100)
+    #archstr = "a.{0}.{1}_t.{1}_a.{1}.{0}".format(d,100)
     affinit = mlp.GaussianAffineInitializer(std,std)
     mlpa = mlp.MLPAutoencoder(archstr, mbsize, l2reg, affinit)
+    mlpvalid = mlp.MLPAutoencoder(archstr, nv, l2reg, affinit)
+    mlpvalid.set_X_y(Xv,Xv)
 
     w = mlpa.w_debug()[0][0]
-    #print np.linalg.norm(w), np.max(w), np.min(w), np.shape(w)
-    #print "Done."
-    #showimage(w, 1)
 
-    #mlpa.set_w(np.concatenate((np.eye(784).flatten(),np.zeros(784))))
 
-    train_sgd = False
-    train_truncnewton = True
+    tnopts = truncatedNewton.TNOpts(backtrack=True,
+                                    momentum=False, 
+                                    damp_dnc=True, 
+                                    trust_region=False,
+                                    curvilinear_line_search=True,
+                                    descent_line_search=False)
     use_hessian=True
-    gcheck = False
-    Hvcheck = False
-    calcritzHv = True
-    calcritzGv = False
-    show = False
+
+    statc = StatCollector(mlpvalid)
+
+    ## TN
+    ninner=10
+    nouter=25
+    train_truncnewton(X,X,mbsize,mlpa, ninner, nouter,tnopts, statc=statc, use_hessian=use_hessian)
+
+    ## SGD
+    niters=6000
+    lr = .1
+    #train_sgd(X,X,mbsize,mlpa,niters,lr,statc=statc)
+
+    # STATS
+
+    dirname="/home/mkayser/school/classes/2014_2015_win/research/nnopt/mnist/png"
+    matrixstr = "hessian" if use_hessian else "gn"
+    modestr = "trust" if tnopts.trust_region else ("DLS" if tnopts.descent_line_search else "CLS")
+    momentumstr = "1" if tnopts.momentum else "0"
+    flocalname="tn.{}.{}.mb{}.{}o.{}i.M{}".format(matrixstr,modestr,mbsize,nouter,ninner,momentumstr)
+    #flocalname="tn.gn.trustregion.50o.50i"
+    #flocalname="tn.gn.trustregion.mb{}.{}o.{}i".format(mbsize,nouter,ninner)
+    #flocalname="sgd.{}iters.mb{}.lr_{}".format(niters,mbsize,lr)
+    fn = "{}/{}.png".format(dirname,flocalname)
+    showstats(statc,1,3)
+    savestats(statc,1,3,fn)
+
+    showoutput(X,X,mbsize,mlpa)
+
+def savestats(statc,colx,coly,fn):
+    stats = statc.retrieve()
+    plt.clf()
+    plt.axis([0,300, 0, 50])
+    plt.plot(stats[:,colx], stats[:,coly])
+    plt.savefig(fn)
+
+def showstats(statc,colx,coly):
+    stats = statc.retrieve()
+    plt.clf()
+    plt.axis([0,300, 0, 50])
+    plt.plot(stats[:,colx], stats[:,coly])
+    plt.show()
+                      
+
+class StatCollector(object):
+    def __init__(self, vmodel):
+        self.vmodel = vmodel
+        self.stats = []
+
+    def add(self, w, i, t, trainf):
+        (valf, _) = self.vmodel.f_g(w)
+        self.stats += [i,t,trainf,valf]
+
+    def retrieve(self):
+        return np.reshape(self.stats, newshape=(len(self.stats)/4, 4))
 
         
-    if train_sgd:
-        niter = 2000
-        lr = .05
-        (lrstep, lrmult) = (1000, .9)
-        max_grad_norm = .1 / lr
-        sgdobj = sgd.SGD(X, X, mbsize, lrstep, lrmult, lr, max_grad_norm=max_grad_norm)
-        sgdobj.train(mlpa, niter)
 
-    if train_truncnewton:
-        bbGv = lambda(v): mlpa.compute_Gv(v)
-        bbHv = lambda(v): mlpa.compute_Hv(v)
-        bb = bbHv if use_hessian else bbGv
-        bbIdentity = lambda(v): v
- 
-        mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
-        (data_loss, reg_loss) = mlpa.fwd(do_Hv=False, do_Gv=False)
-        print "Initial loss: {:.3}".format(data_loss+reg_loss)
-       
-        truncatedNewton.truncatedNewton(mlpa.get_w(), 
-                                        mlpa, .1, 
-                                        X, X, 
-                                        bb, bbIdentity, mbsize, 50,
-                                        backtrack=True, momentum=True, damp_dnc=True, trust_region=True)
+def train_truncnewton(X, y, mbsize, mlpa, ncgiters, niters, tnopts, statc=None, use_hessian=False):
+    bbGv = lambda(v): mlpa.compute_Gv(v)
+    bbHv = lambda(v): mlpa.compute_Hv(v)
+    bb = None
 
+    if use_hessian:
+        bb = bbHv
+    else:
+        bb = bbGv
 
-    if calcritzHv:
-        mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
-
-        mlpa.fwd(do_Hv=False, do_Gv=False)
-        mlpa.bwd(do_Hv=False, do_Gv=False)
-        g = mlpa.get_g()
-        bbHv = lambda(v): compute_Hv_given_v(mlpa,v)
-        ritz.ritz_lanczos(bbHv,g,iters_to_compute=(20,200))
-
-    if calcritzGv:
-        mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
-
-        mlpa.fwd(do_Hv=False, do_Gv=False)
-        mlpa.bwd(do_Hv=False, do_Gv=False)
-        g = mlpa.get_g()
-        bbGv = lambda(v): compute_Gv_given_v(mlpa,v)
-        ritz.ritz_lanczos(bbGv,g,iters_to_compute=(20,100))
+    bbIdentity = lambda(v): v
     
-    if gcheck:
-        mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
-        
-        # Fwd and Bwd passes
-        mlpa.fwd(do_Hv=False, do_Gv=False)
-        mlpa.bwd(do_Hv=False, do_Gv=False)
-        f = lambda: sum(mlpa.fwd(do_Hv=False, do_Gv=False))
-        g = lambda: mlpa.get_g()
-        gradcheck.gradcheck(f, g, mlpa.get_w())
+    statc.add(mlpa.get_w(), 0, 0, 0)
+    lam = .1 if tnopts.trust_region else 0
 
-    if Hvcheck:
-        mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
+    truncatedNewton.truncatedNewton(mlpa.get_w(), 
+                                    mlpa, lam, 
+                                    X, y, 
+                                    bb, bbIdentity, mbsize,
+                                    ncgiters,
+                                    niters,
+                                    tnopts, statc=statc)
 
-        Hv = lambda: compute_Hv(mlpa)
-        g  = lambda: compute_g(mlpa)
-        #p  = lambda(msg): print_state(msg, mlpa)
-        p = None
-        gradcheck.Hv_check(Hv, g, mlpa.get_v(), mlpa.get_w(), state_printer=p, random_subset_size=100)
+def train_sgd(X, y, mbsize, mlpa, niters, lr, statc=None):
+    (lrstep, lrmult) = (1000, .9)
+    max_grad_norm = .1 / lr
+
+    statc.add(mlpa.get_w(), 0, 0, 0)
+
+    sgdobj = sgd.SGD(X, X, mbsize, lrstep, lrmult, lr, 
+                     max_grad_norm=max_grad_norm, statc=statc)
+    sgdobj.train(mlpa, niters)
 
 
-    if show:
-        mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
+def calcritzHv():
+    mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
+
+    mlpa.fwd(do_Hv=False, do_Gv=False)
+    mlpa.bwd(do_Hv=False, do_Gv=False)
+    g = mlpa.get_g()
+    bbHv = lambda(v): compute_Hv_given_v(mlpa,v)
+    ritz.ritz_lanczos(bbHv,g,iters_to_compute=(20,200))
+
+
+def calcritzGv():
+    mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
+
+    mlpa.fwd(do_Hv=False, do_Gv=False)
+    mlpa.bwd(do_Hv=False, do_Gv=False)
+    g = mlpa.get_g()
+    bbGv = lambda(v): compute_Gv_given_v(mlpa,v)
+    ritz.ritz_lanczos(bbGv,g,iters_to_compute=(20,100))
+    
+def gcheck():
+    mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
         
-        (_, _) = mlpa.fwd(do_Hv=False, do_Gv=False)
+    # Fwd and Bwd passes
+    mlpa.fwd(do_Hv=False, do_Gv=False)
+    mlpa.bwd(do_Hv=False, do_Gv=False)
+    f = lambda: sum(mlpa.fwd(do_Hv=False, do_Gv=False))
+    g = lambda: mlpa.get_g()
+    gradcheck.gradcheck(f, g, mlpa.get_w())
+
+def Hvcheck():
+    mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
+
+    Hv = lambda: compute_Hv(mlpa)
+    g  = lambda: compute_g(mlpa)
+    #p  = lambda(msg): print_state(msg, mlpa)
+    p = None
+    gradcheck.Hv_check(Hv, g, mlpa.get_v(), mlpa.get_w(), state_printer=p, random_subset_size=100)
+
+
+def showoutput(X,y,mbsize,mlpa):
+    H = 28
+    W = 28
+    mlpa.set_X_y(X[:,:mbsize], X[:,:mbsize])
         
-        ypred = mlpa.get_ypred()
+    (_, _) = mlpa.fwd(do_Hv=False, do_Gv=False)
         
-        s = 5
-        indices = np.random.choice(mbsize, s)
+    ypred = mlpa.get_ypred()
         
-        ypredsample = ypred[:,indices]
-        Xsample = X[:,indices]
+    s = 5
+    indices = np.random.choice(mbsize, s)
         
-        ypredsample = ypredsample.T.reshape((s, H, W))
-        Xsample = Xsample.T.reshape((s,H,W))
+    ypredsample = ypred[:,indices]
+    Xsample = X[:,indices]
         
-        a = np.lib.pad(ypredsample, ((0,0),(4,4),(4,4)), 'constant')
-        b = np.lib.pad(Xsample, ((0,0),(4,4),(4,4)), 'constant')
+    ypredsample = ypredsample.T.reshape((s, H, W))
+    Xsample = Xsample.T.reshape((s,H,W))
         
-        a = a.reshape(-1,W+8)
-        b = b.reshape(-1,W+8)
+    a = np.lib.pad(ypredsample, ((0,0),(4,4),(4,4)), 'constant')
+    b = np.lib.pad(Xsample, ((0,0),(4,4),(4,4)), 'constant')
         
-        c = np.hstack((a,b))
+    a = a.reshape(-1,W+8)
+    b = b.reshape(-1,W+8)
         
-        showimage(c, c.max())
+    c = np.hstack((a,b))
         
-        w_debug = mlpa.w_debug()
+    showimage(c, c.max())
         
-        matrix0 = w_debug[0][0]
-        showimage(matrix0, matrix0.max())
+    w_debug = mlpa.w_debug()
+        
+    matrix0 = w_debug[0][0]
+    showimage(matrix0, matrix0.max())
         
 
 def do_gradcheck():

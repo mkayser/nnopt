@@ -166,6 +166,9 @@ class MLPAutoencoder(object):
         self.bwd(do_Hv=False, do_Gv=True)
         return self.Gv
 
+    def compute_Fv(self, v):
+        return self.g * self.g.dot(v)
+
     def f_g(self, w, compute_g=True, do_Hv=False, do_Gv=False):
         self.set_w(w)
         #print "Wnorm: ",np.linalg.norm(w)

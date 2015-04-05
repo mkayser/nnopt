@@ -1,4 +1,6 @@
 import numpy as np
+import scipy
+import scipy.optimize
 import cg
 import time
 
@@ -16,25 +18,27 @@ def data_batch(X,y,start,n,N):
 def bb_shifted(bb,lam):
     return (lambda(v): bb(v)+lam*v)
 
-class UpdateParams(object):
-    def __init__(self, line_search, ls_curv, ):
-        self.line_search = line_search
-        if line_search:
-            self.curvilinear = ls_curv
-            self.wolfe_c1 = ls_wolfe_c1
-            self.wolfe_c2 = ls_wolfe_c2
-            
+
+class TNOpts(object):
+    def __init__(self,
+                 backtrack=False, 
+                 momentum=False,
+                 damp_dnc=True,
+                 trust_region=True, 
+                 curvilinear_line_search=False,
+                 descent_line_search=False,
+                 verbose=False):
+        self.backtrack=backtrack
+        self.momentum=momentum
+        self.damp_dnc=damp_dnc
+        self.trust_region=trust_region
+        self.curvilinear_line_search=curvilinear_line_search
+        self.descent_line_search=descent_line_search
+        self.verbose=verbose
 
 def truncatedNewton(w0, model, lambda_0, 
                     X, y, 
-                    bbHv_orig, bbMinv, n, 
-                    MAXTRUNC,
-                    MAXCG=50,
-                    backtrack=False, 
-                    momentum=False,
-                    damp_dnc=True,
-                    trust_region=True, 
-                    verbose=False):
+                    bbHv_orig, bbMinv, n, MAXCG, MAXTRUNC, tnopts, statc=None):
     start = 0
     converged = False
     N = X.shape[1]
@@ -47,14 +51,17 @@ def truncatedNewton(w0, model, lambda_0,
     NU=.00001
     
     d0 = np.zeros_like(w0)
-
     lam = lambda_0
-
     bbHv = bb_shifted(bbHv_orig, lam)
 
     i = 0
+    samples_trained = 0
 
     starttime = time.clock()
+    elapsed = 0
+
+    assert sum([tnopts.trust_region, tnopts.curvilinear_line_search, tnopts.descent_line_search]) == 1
+
     while not converged:
         
         i += 1
@@ -67,41 +74,50 @@ def truncatedNewton(w0, model, lambda_0,
 
         (f,g) = model.f_g(w)
 
-        (dd, dnc, dd_hist, reason) = cg.cg(f, d0, bbHv, bbMinv, -g, MAXCG, K, EPS, NU)
+        (dd, dnc, dnc_pAp, dd_hist, reason) = cg.cg(f, d0, bbHv, bbMinv, -g, MAXCG, K, EPS, NU)
 
-        dirderiv=999 if dd is None else g.dot(dd)
-        assert dd is None or dirderiv < 0
+
         if dnc is not None and g.dot(dnc) > 0:
             dnc = -dnc
 
-        # Determine search direction
-        if backtrack:
-            bestd = None
-            bestf = None
-            bestapproxf = None # Value of quadratic approximation
-            for d,approxf in reversed(dd_hist):
-                (fnew,_) = model.f_g(w+d, compute_g=False)
-                if bestf is None or bestf > fnew:
-                    (bestf,bestd,bestapproxf) = (fnew,d,approxf)
-                    if verbose:
-                        print "BACKTRACK: F={:.3}  |D|={:.3}  Q={:.3}".format(bestf,np.linalg.norm(bestd),bestapproxf)
-                elif bestf is not None:
-                    # Stop backtracking as soon as score stops improving
-                    if verbose:
-                        print "STOP-BACKTRACK: ",fnew
-                    break
-        else:
-            bestd = dd
-            (bestf, _) = model.f_g(w+dd, compute_g=False) 
+        if dd is None:
+            dd = -g
+            dd_hist = [(dd,None)]
 
-        # Set lambda
-        actual = f - bestf
-        predicted = f - bestapproxf
-        ratio = actual / predicted
+        wstep = None
+        fnew = None
+        
+        if tnopts.trust_region:
 
+            # Determine search direction
+            fapproxnew = None # Value of quadratic approximation
 
-        if trust_region:
-            if damp_dnc and dnc is not None: 
+            if tnopts.backtrack:
+                for d,approxf in reversed(dd_hist):
+                    (fcandidate,_) = model.f_g(w+d, compute_g=False)
+                    if fnew is None or fnew > fcandidate:
+                        (fnew,wstep,fapproxnew) = (fcandidate,d,approxf)
+                        #if tnopts.verbose:
+                        print "BACKTRACK: F={:.3}  |D|={:.3}  Q={}".format(fnew,np.linalg.norm(wstep),fapproxnew)
+                    elif fnew is not None:
+                        # Stop backtracking as soon as score stops improving
+                        if tnopts.verbose:
+                            print "STOP-BACKTRACK: ",fcandidate
+                        break
+            else:
+                wstep = dd
+                fapproxnew = dd_hist[-1][1]
+                (fnew, _) = model.f_g(w+wstep, compute_g=False) 
+
+            # Set lambda
+            fimprovement = f - fnew
+            fimprovement_predicted = f - fapproxnew if fapproxnew is not None else None
+            ratio = fimprovement / fimprovement_predicted if fapproxnew is not None else None
+
+            dirderiv = g.dot(wstep)
+            assert dirderiv<0, "Dirderiv is nonnegative: {}".format(dirderiv)
+
+            if tnopts.damp_dnc and dnc is not None: 
                 lam *= 1.5
             else:
                 if ratio < .25: 
@@ -110,19 +126,61 @@ def truncatedNewton(w0, model, lambda_0,
                     lam /= 1.5
             bbHv = bb_shifted(bbHv_orig, lam)
 
-        # TODO: use directions of negative curvature in line search
-        elapsed=time.clock()-starttime
-        print "***OBJ**={:.3}  elapsed={:.3}s  nextobj={:.3}  starti={}  NormW={:.3}  NormD={:.3}  NormG={:.3}  DirDeriv={:.3}  DNC={}  CG_HIST={}  decf={:.2}  decq={:.2}  redratio={:.2}  lambda={:.2}  reason={}".format(f, elapsed, bestf, start, np.linalg.norm(w), np.linalg.norm(bestd), np.linalg.norm(g), dirderiv/(np.linalg.norm(g)*np.linalg.norm(dd)), dnc is not None, len(dd_hist),  actual, predicted, ratio, lam, reason)
+            report_str = "DirDeriv={:.3}  decf={:.2}  decq={}  redratio={}  lambda={:.2}".format(
+                dirderiv/(np.linalg.norm(g)*np.linalg.norm(dd)), fimprovement, fimprovement_predicted, ratio, lam)
+
+        elif tnopts.curvilinear_line_search:
+            # Perform linesearch
+            if dnc is not None:
+                (wstep,fnew) = curvilinear_ls(model, w, dd, dnc, dnc_pAp)
+            else:
+                (wstep,fnew) = descent_ls(model, w, dd)
+
+            report_str = ""
+
+        elif tnopts.descent_line_search:
+            (wstep,fnew) = descent_ls(model, w, dd)
+            report_str = ""
+
+        elapsed += (time.clock()-starttime)
+
+        print "obj={:.3}  elapsed={:.3}s  starti={}  NormW={:.3}  NormD={:.3}  NormG={:.3}  DNC={}  CG_HIST={}  {}  reason={}".format(fnew, elapsed, start, np.linalg.norm(w), np.linalg.norm(wstep), np.linalg.norm(g), dnc is not None, len(dd_hist),  report_str, reason)
 
         # Update w
-        if actual > 0:
-            w += bestd
+        if fnew < f:
+            w += wstep
+        else:
+            print "*** WARNING: no improvement ***"
+
+        samples_trained += n
+
+        # Don't count stats collection in time reporting since it can take a while
+        if statc is not None:
+            statc.add(w, samples_trained, elapsed, fnew)
+        starttime = time.clock()
+                      
 
         # Set starting dir for next time
-        if momentum:
-            d0 = dd
+        if tnopts.momentum:
+            d0 = wstep
         
         if i==MAXTRUNC:
             converged = True
 
 
+def curvilinear_ls(model, w, dd, dnc, dnc_pAp, amax=50, beta=.5, sigma=1e-4):
+
+    (f0,g0) = model.f_g(w, compute_g=True)
+
+    for i in xrange(amax):
+        alpha = beta ** i
+        step = alpha*dd + alpha*alpha*dnc
+        est_change = alpha*g0.dot(dd) + .5*(alpha**4)*dnc_pAp
+        (f,_) = model.f_g(w+step, compute_g=False)
+        actual_change = f - f0
+        if actual_change <= sigma * est_change:
+            return (step,f)
+    assert False
+
+def descent_ls(model, w, dd, amax=50, beta=.1, sigma=1e-1):
+    return curvilinear_ls(model, w, dd, 0, 0, amax=amax)

@@ -34,9 +34,9 @@ def cg(f0, x0, bbA, bbMinv, b, MAX, K, EPS, NU, verbose=False):
             # DNC
             if k==1:
                 #TODO
-                return (x, p, dir_hist, "DNC")
+                return (None, p, pAp, dir_hist, "DNC")
             else:
-                return (x, p, dir_hist, "DNC")
+                return (x, p, pAp, dir_hist, "DNC")
         #pprint(locals())
         rdotytemp = r.dot(y)
         alpha = r.dot(y) / pAp
@@ -54,7 +54,7 @@ def cg(f0, x0, bbA, bbMinv, b, MAX, K, EPS, NU, verbose=False):
         p = -y + beta * p
         (finished, reason) = cg_term(bnorm, np.linalg.norm(r), VALS, MAX, K, EPS, NU)
 
-    return (x, None, dir_hist, reason)
+    return (x, None, None, dir_hist, reason)
         
 
 # All termination conditions except negative curvature

@@ -1,0 +1,130 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath}
+\usepackage[top=0.5in, bottom=1in, left=0.9in, right=0.9in]{geometry}
+\usepackage{wrapfig}
+\usepackage{multicol}
+\usepackage{caption}
+\usepackage{rotating}
+\usepackage[numbers]{natbib}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{capt-of}
+\usepackage{comment}
+\usepackage{floatrow}
+
+
+\title{An Empirical Investigation of Second-order methods for Neural Network Optimization}
+\author{Mike Kayser}
+\date{\today}
+
+\begin{comment}
+Your project milestone report should be between 2 - 3 pages using the provided template. The following is a suggested structure for your report:
+\end{comment}
+
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+\begin{comment}
+this section introduces your problem, and the overall plan for approaching your problem
+\end{comment}
+
+Neural network optimization is a well-studied topic. It is widely believed that simple first-order methods (e.g., stochastic gradient descent or minibatch gradient descent, or variants such as AdaGrad \cite{adagrad} or momentum methods \cite{momentum}) do at least as well as more powerful second-order methods. This is in contrast to many other optimization regimes, where gradient descent is considered a poor technique.
+
+There are many reasons why neural networks might indeed be a "special case." One big difference is that for typical nonlinear regression problems, neural networks represent a \textit{stochastic optimization problem}, one in which the objective function is a simple average of many (perhaps thousands or millions) of noisy sub-objectives. In particular, the loss which we are attempting to minimize has the least-squares form:
+
+\begin{align*}
+  L(\theta, X, y) &= \frac{1}{n} \sum_{i=1}^{n} \ell(\theta, X^{(i)}, y^{(i)}) \\
+                  &= \frac{1}{n} \sum_{i=1}^{n} (f(\theta, X^{(i)}) - y^{(i)})^2 \\
+\end{align*}
+
+where $X = \{X^{(i)} | 1 \leq i \leq n \}$ is the set of \textit{inputs}, $y = \{y^{(i)} | 1 \leq i \leq n \}$ are the corresponding \textit{outputs}, and $f(\theta,x)$ represents the output of the neural network with parameters $\theta$, when taking input $x$.
+
+This stochastic regime is notable for two reasons. First, \textit{noisy gradients can be cheaply computed on small subsets of the data}. This implies that progress can be made without computing gradients on the full objective. Second, and relatedly, \textit{the use of noisy gradients provides a possible way to escape stationary points.} This is because a, at a point $x_k$ where the full gradient $g_k$ is close to zero, there may well be one or several sub-objectives for which the noisy estimated gradient $g_k^{(i)}$ is not nearly zero. Note that this reasoning does not imply that stochastic gradient descent can easily avoid the problem of long valleys of low curvature, although momentum methods try to address this second problem.
+
+In practice, the first of these considerations means that the humble \textit{stochastic gradient method} (SGD) is in fact very very hard to beat, despite its theoretical shortcomings. In this work we implement the recently proposed \textit{Hessian-free} optimization technique in an attempt to beat SGD. 
+
+
+\section{Problem statement}
+
+An \textit{autoencoder} is a special type of neural network whose task is to represent the identity function: $f(x)=x$. Autoencoders are commonly studied in their own right, but are also of considerable practical interest because a properly trained autoencoder will in many cases learn useful hidden \texit{representations} of the data which can be useful for related tasks. In this work, we develop and optimize an autoencoder for the well-known MNIST digit recognition task. In particular, the input is a 784-element vector representing grayscale pixel intensities of a 28x28 array of pixels. Each such array contains a picture of a human-written digit. In figure 
+
+\begin{comment}
+Describe your problem precisely specifying the dataset to be used, expected results and evaluation
+\end{comment}
+
+The CHiME challenge \cite{inriachime} is a competition affiliated with a workshop at the IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP).
+We use the noisy speech recognition dataset from Track 1 of the 2013 CHiME challenge to train and evaluate an audio-denoising convolutional network.
+The CHiME dataset consists of clean and corresponding artificially mixed noisy audio tracks. The competition organizers claim that the noise-mixing techniques used in data preparation are highly representative of typical noise encountered in a real application. The training data consists of 17,000 very short utterances that make use of a closed-class and extremely limited vocabulary. The development and test data consist of 600 similarly structured utterances. Each test utterance is mixed with various levels of background noise, so that one can measure the average performance of a system at various noise levels.
+
+The ultimate task of CHiME is to maximize speech recognition accuracy at various levels of noise. To allow participants to focus on the task of input denoising, the organizers have made Hidden Markov Model Toolkit (HTK) \cite{htk}, a baseline trainable recognition system, available. Thus, more concretely the task is to supply \textit{processed input} to the speech recognizer that best allows it to correctly recognize the words of the utterance. The final task metric is word recognition accuracy. 
+
+
+
+%We currently have two preliminary ideas to evaluate our system. Traditionally, speech recognition systems make use of Mel Frequency Cepstral Coefficient features (MFCC), which can be extracted from the raw audio through a well known deterministic procedure \cite{mfcctutorial}.
+
+%TODO: add more here
+
+%Given the spectrogram of the clean track, we can produce clean MFCC features. The goal of the system is then to produce the clean MFCC features given the spectrogram of the noisy track. Alternatively, we can attempt to reconstruct the spectrogram of the clean track, and subsequently produce the corresponding MFCC features. In both cases, the reconstruction error is used as the evaluation metric. Ultimately, the MFCC features are fed into an existing speech recognition system to produce transcriptions.
+
+%TODO: cite existing ASR system
+
+%We note, however, that 
+
+\section{Technical Approach}
+
+\begin{comment}
+Describe the methods you intend to apply to solve the given problem
+\end{comment}
+
+
+We process each utterance into its spectrogram representation. Note that if the spectrogram is appropriately discretized, the result is grayscale image heat map of energies at each frequency at every time slice  (see figure ~\ref{fig:spect}).
+
+%\begin{figure}[!htb]
+%    \begin{floatrow}
+%             \ffigbox{\includegraphics[scale=0.2]{spect.png}}{\caption{A clean spectrogram}\label{fig:spect}}
+%             \ffigbox{\includegraphics[scale = 0.2]{spect_noisy.png}}{\caption{A noisy spectrogram}\label{fig:spect_noisy}}
+%           \end{floatrow}
+%\end{figure}
+
+%We will learn to denoise the audio input by making use of parallel clean and corrupted versions of training utterances. At test time, we will denoise the test utterances and feed the resulting denoised utterances into an HMM speech recognizer. The ultimate task is to improve the recognizer's word recognition accuracy. 
+
+
+We make the denoising task concrete as follows. First, we define our goal as being to provide \textit{cleaned Mel Frequency Cepstral Coefficient (MFCC) features} to an HMM-based speech recognition system. The input to our CNN is thus a noisy spectrogram. In one variation, the output of the CNN is a cleaned spectrogram, and a deterministic procedure converts this into MFCC's for use in the recognizer. Alternatively, the CNN could be responsible for directly generating MFCC's, e.g. by adding a multilayer perceptron to the final layers of the network. These two approaches can be seen in figures ~\ref{fig:method1} and ~\ref{fig:method2} below.
+
+%\begin{figure}[h]
+%    \begin{floatrow}
+%             \ffigbox{\includegraphics[scale=0.4]{diagram1.png}}{\caption{In method 1, a noisy spectrogram is given to the CNN, which produces a cleaned spectrogram. The cleaned output is used to generate MFCC's using a deterministic procedure. The MFCC's are used directly by an HMM-based speech recognition engine (HTK).}\label{fig:method1}}
+%             \ffigbox{\includegraphics[scale=0.4]{diagram2.png}}{\caption{In method 2, a multilayer perceptron appended to the CNN directly produces MFCC features, which are used as before by the HTK system.}\label{fig:method2}}
+%           \end{floatrow}
+%\end{figure}
+
+At training time, in method 1 we learn to translate noisy spectrogram patches via a CNN into cleaned spectrogram patches, using the corrupted and clean versions of the training data. In method 2 we learn to translate noisy spectrogram slices (e.g. patches whose height is the full spectrogram height) into cleaned MFCC features.
+
+We aim to answer experimental questions such as the following:
+
+\begin{itemize}
+\item Are CNN's a good modelling fit for the task of audio denoising? As mentioned, we are not aware of any published work applying CNN's in this way. If CNN's are effective at this task, it would offer the hope that noise-robust speech recognition could be possible without the significant effort of hand-engineered transforms.
+\item What filter sizes are best for audio de-noising? For example, when using CNN's for image deblurring, Xu et al. found that using long and thin filters followed by tall and skinny filters offered good deconvolution performance while not requiring too many parameters\cite{cnndenoising}. One could imagine, in particular, that when deconvolving a reverberation one wants filters that are long in the time axis, and short in the frequency axis (since reverberation causes significant autocorrelation in the signal but does not cause significant frequency interaction). However, deconvolution is only one of the kinds of noise present. Another is well-formed but independent sources of noise, e.g. from a washing machine. One might expect that more standard, e.g. 3x3, convolutional filters would do better here.
+\item Is method 1 or method 2 (as described above) better? It is not obvious that a reasonably sized MLP can accurately convert convolved spectral representations into MFCC features as needed in method 2. On the other hand, low reconstruction error on the spectrogram (as in method 1) does not necessarily correspond to low reconstruction error on the MFCC features. Due to time constraints, we may only have time to thoroughly explore one of these methods, but given enough time we would like to perform a fair comparison of both techniques.
+\end{itemize}
+
+
+\section{Preliminary Results}
+
+\begin{comment}
+State and evaluate your results up to the milestone
+\end{comment}
+
+We have put significant effort into setting up the pipeline surrounding the CNN above. In particular, we have experimented with a variety of MFCC extraction libraries, in the process learning about many subtleties of the MFCC extraction algorithm. We have identified a library which appears to emulate HTK's MFCC extraction closely. This is important because (1) HTK is the ultimate consumer of the MFCC features, so it is reasonable to expect that we should not deviate much from its behavior, and (2) we cannot simply use HTK's extraction directly, as the code is not easily factorable. We have also identified a library which can convert HTK's packed binary MFCC format to and from a simple text format. Surprisingly, this was not straightforward to do using HTK itself. Finally, we have extracted spectrogram representations of all data (training, development, and test, noisy and clean). 
+
+Overall, we have done the initial legwork necessary to begin experimenting with CNN's.
+
+\footnotesize
+\bibliography{references}{}
+\bibliographystyle{apa}
+
+\end{document}
