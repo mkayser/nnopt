@@ -57,9 +57,6 @@ def truncatedNewton(w0, model, lambda_0,
     i = 0
     samples_trained = 0
 
-    starttime = time.clock()
-    elapsed = 0
-
     assert sum([tnopts.trust_region, tnopts.curvilinear_line_search, tnopts.descent_line_search]) == 1
 
     while not converged:
@@ -142,9 +139,7 @@ def truncatedNewton(w0, model, lambda_0,
             (wstep,fnew) = descent_ls(model, w, dd)
             report_str = ""
 
-        elapsed += (time.clock()-starttime)
 
-        print "obj={:.3}  elapsed={:.3}s  starti={}  NormW={:.3}  NormD={:.3}  NormG={:.3}  DNC={}  CG_HIST={}  {}  reason={}".format(fnew, elapsed, start, np.linalg.norm(w), np.linalg.norm(wstep), np.linalg.norm(g), dnc is not None, len(dd_hist),  report_str, reason)
 
         # Update w
         if fnew < f:
@@ -155,9 +150,10 @@ def truncatedNewton(w0, model, lambda_0,
         samples_trained += n
 
         # Don't count stats collection in time reporting since it can take a while
-        if statc is not None:
-            statc.add(w, samples_trained, elapsed, fnew)
-        starttime = time.clock()
+        statc.add(w, samples_trained, fnew)
+        elapsed = statc.elapsed_time()
+
+        print "obj={:.3}  elapsed={:.3}s  starti={}  NormW={:.3}  NormD={:.3}  NormG={:.3}  DNC={}  CG_HIST={}  {}  reason={}".format(fnew, elapsed, start, np.linalg.norm(w), np.linalg.norm(wstep), np.linalg.norm(g), dnc is not None, len(dd_hist),  report_str, reason)
                       
 
         # Set starting dir for next time

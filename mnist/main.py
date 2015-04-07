@@ -8,6 +8,7 @@ import ritz
 import truncatedNewton
 from pylab import *
 import matplotlib.pyplot as plt
+import stats
 
 def showimage(m, maxval):
     assert len(m.shape)==2
@@ -48,7 +49,7 @@ def do_mnist():
 
     n = 1000
     nv = 100
-    mbsize = 1000
+    mbsize = 10
     std = .01
     l2reg = 0.0
 
@@ -83,17 +84,18 @@ def do_mnist():
                                     descent_line_search=False)
     use_hessian=True
 
-    statc = StatCollector(mlpvalid)
+    statc = stats.StatCollector(mlpvalid)
+    statc.start_timer()
 
     ## TN
     ninner=10
     nouter=25
-    train_truncnewton(X,X,mbsize,mlpa, ninner, nouter,tnopts, statc=statc, use_hessian=use_hessian)
+    #train_truncnewton(X,X,mbsize,mlpa, ninner, nouter,tnopts, statc=statc, use_hessian=use_hessian)
 
     ## SGD
     niters=6000
     lr = .1
-    #train_sgd(X,X,mbsize,mlpa,niters,lr,statc=statc)
+    train_sgd(X,X,mbsize,mlpa,niters,lr,statc=statc)
 
     # STATS
 
@@ -101,10 +103,8 @@ def do_mnist():
     matrixstr = "hessian" if use_hessian else "gn"
     modestr = "trust" if tnopts.trust_region else ("DLS" if tnopts.descent_line_search else "CLS")
     momentumstr = "1" if tnopts.momentum else "0"
-    flocalname="tn.{}.{}.mb{}.{}o.{}i.M{}".format(matrixstr,modestr,mbsize,nouter,ninner,momentumstr)
-    #flocalname="tn.gn.trustregion.50o.50i"
-    #flocalname="tn.gn.trustregion.mb{}.{}o.{}i".format(mbsize,nouter,ninner)
-    #flocalname="sgd.{}iters.mb{}.lr_{}".format(niters,mbsize,lr)
+    #flocalname="tn.{}.{}.mb{}.{}o.{}i.M{}".format(matrixstr,modestr,mbsize,nouter,ninner,momentumstr)
+    flocalname="sgd.{}iters.mb{}.lr_{}".format(niters,mbsize,lr)
     fn = "{}/{}.png".format(dirname,flocalname)
     showstats(statc,1,3)
     savestats(statc,1,3,fn)
@@ -126,19 +126,6 @@ def showstats(statc,colx,coly):
     plt.show()
                       
 
-class StatCollector(object):
-    def __init__(self, vmodel):
-        self.vmodel = vmodel
-        self.stats = []
-
-    def add(self, w, i, t, trainf):
-        (valf, _) = self.vmodel.f_g(w)
-        self.stats += [i,t,trainf,valf]
-
-    def retrieve(self):
-        return np.reshape(self.stats, newshape=(len(self.stats)/4, 4))
-
-        
 
 def train_truncnewton(X, y, mbsize, mlpa, ncgiters, niters, tnopts, statc=None, use_hessian=False):
     bbGv = lambda(v): mlpa.compute_Gv(v)
@@ -167,7 +154,7 @@ def train_sgd(X, y, mbsize, mlpa, niters, lr, statc=None):
     (lrstep, lrmult) = (1000, .9)
     max_grad_norm = .1 / lr
 
-    statc.add(mlpa.get_w(), 0, 0, 0)
+    statc.add(mlpa.get_w(), 0, 0)
 
     sgdobj = sgd.SGD(X, X, mbsize, lrstep, lrmult, lr, 
                      max_grad_norm=max_grad_norm, statc=statc)
